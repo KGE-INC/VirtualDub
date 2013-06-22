@@ -22,6 +22,7 @@
 #include <vd2/system/file.h>
 #include <vd2/system/error.h>
 #include <vd2/Dita/interface.h>
+#include <vd2/Dita/w32peer.h>
 #include "misc.h"
 #include "oshelper.h"
 #include "gui.h"
@@ -806,9 +807,28 @@ public:
 
 			SetValue(200, mTimingSetup.mSyncMode);
 
+			int v = mTimingSetup.mInsertLimit;
+			SetCaption(300, VDswprintf(L"%d", 1, &v));
+
 			pBase->ExecuteAllLinks();
 		} else if (type == kEventSelect) {
 			if (id == 10) {
+				const VDStringW s(GetCaption(300));
+				const wchar_t *t = s.c_str();
+
+				int v = wcstoul(t, (wchar_t **)&t, 10);
+
+				while(iswspace(*t))
+					++t;
+
+				if (*t) {
+					MessageBeep(MB_ICONEXCLAMATION);
+					SetFocus(vdpoly_cast<VDUIPeerW32 *>(pBase->GetControl(300))->GetHandleW32());
+					return true;
+				}
+
+				mTimingSetup.mInsertLimit = v;
+
 				mTimingSetup.mSyncMode = (VDCaptureTimingSetup::SyncMode)GetValue(200);
 				mTimingSetup.mbAllowEarlyDrops = GetValue(100) != 0;
 				mTimingSetup.mbAllowLateInserts = GetValue(101) != 0;

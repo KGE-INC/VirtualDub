@@ -388,3 +388,50 @@ bool VDAVIOutputPreviewSystem::AcceptsVideo() {
 bool VDAVIOutputPreviewSystem::AcceptsAudio() {
 	return true;
 }
+
+///////////////////////////////////////////////////////////////////////////
+//
+//	VDAVIOutputNullVideoAnalysisSystem
+//
+///////////////////////////////////////////////////////////////////////////
+
+VDAVIOutputNullVideoSystem::VDAVIOutputNullVideoSystem()
+{
+}
+
+VDAVIOutputNullVideoSystem::~VDAVIOutputNullVideoSystem() {
+}
+
+IVDMediaOutput *VDAVIOutputNullVideoSystem::CreateSegment() {
+	vdautoptr<AVIOutputNull> pOutput(new AVIOutputNull);
+
+	if (!mVideoFormat.empty())
+		pOutput->createVideoStream()->setFormat(&mVideoFormat[0], mVideoFormat.size());
+
+	pOutput->init(NULL);
+
+	return pOutput.release();
+}
+
+void VDAVIOutputNullVideoSystem::CloseSegment(IVDMediaOutput *pSegment, bool bLast) {
+	AVIOutputNull *pFile = (AVIOutputNull *)pSegment;
+	pFile->finalize();
+	delete pFile;
+}
+
+void VDAVIOutputNullVideoSystem::SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat) {
+	mVideoStreamInfo = asi;
+	mVideoFormat.resize(cbFormat);
+	memcpy(&mVideoFormat[0], pFormat, cbFormat);
+}
+
+void VDAVIOutputNullVideoSystem::SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved) {
+}
+
+bool VDAVIOutputNullVideoSystem::AcceptsVideo() {
+	return true;
+}
+
+bool VDAVIOutputNullVideoSystem::AcceptsAudio() {
+	return false;
+}

@@ -1324,7 +1324,7 @@ int VideoSourceMPEG::_read(VDPosition lStart64, uint32 lCount, void *lpBuffer, u
 			break;
 	}
 
-	// We must add 3 bytes to hold the end marker when we decode
+	// We must add 4 bytes to hold the end marker when we decode
 
 	if (!lpBuffer) {
 		if (lSamplesRead) *lSamplesRead = 1;
@@ -1339,6 +1339,13 @@ int VideoSourceMPEG::_read(VDPosition lStart64, uint32 lCount, void *lpBuffer, u
 	}
 
 	parentPtr->ReadStream(lpBuffer, msi->stream_pos, len, FALSE);
+
+	// add marker at the end of the block so the decoder knows when to
+	// stop without having to constantly check the length
+	((char *)lpBuffer)[len] = 0;
+	((char *)lpBuffer)[len+1] = 0;
+	((char *)lpBuffer)[len+2] = 1;
+	((char *)lpBuffer)[len+3] = (char)0xff;
 
 	if (lSamplesRead) *lSamplesRead = 1;
 	if (lBytesRead) *lBytesRead = len+4;
@@ -2255,7 +2262,9 @@ const char InputFileMPEG::szME[]="MPEG Import Filter";
 #define VIDEO_PACKET_BUFFER_SIZE	(1048576)
 #define AUDIO_PACKET_BUFFER_SIZE	(65536)
 
-InputFileMPEG::InputFileMPEG() {
+InputFileMPEG::InputFileMPEG()
+	: pScanBuffer(NULL)
+{
 	// clear variables
 
 	file_cpos = 0;
@@ -2393,13 +2402,17 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 		if (softskip>0)
 			Skip(softskip);
 
+		bool forceAbort = false;
+
 		try {
 			do {
 				int c;
 				int stream_id, pack_length;
 
 				file_cpos = Tell();
-				guiDlgMessageLoop(hWndStatus);
+
+				if (!guiDlgMessageLoop(hWndStatus))
+					fAbort = forceAbort = true;
 
 				if (fAbort)
 					throw MyUserAbortError();
@@ -2582,6 +2595,11 @@ void InputFileMPEG::Init(const wchar_t *szFile) {
 				}
 			} while(!finished && (fInterleaved ? NextStartCode() : !end_of_file));
 		} catch(const MyUserAbortError&) {
+			if (forceAbort) {
+				delete mpScanPrefetcher;
+				throw;
+			}
+
 			fTrimLastOff = true;
 		} catch(const MyError&) {
 			fTrimLastOff = true;
@@ -3023,6 +3041,7 @@ INT_PTR CALLBACK InputFileMPEG::ParseDialogProc(HWND hDlg, UINT uMsg, WPARAM wPa
 		SetTimer(hDlg, 1, 250, (TIMERPROC)NULL);
 
 		EnableWindow(GetParent(hDlg), FALSE);
+		ShowWindow(hDlg, IsIconic(g_hWnd) ? SW_SHOWMINNOACTIVE : SW_SHOW);
 		return TRUE;
 
 	case WM_TIMER:

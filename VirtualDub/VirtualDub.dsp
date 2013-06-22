@@ -489,7 +489,7 @@ SOURCE=.\res\virtualdub.ami
 
 # Begin Custom Build - Compiling program resources....
 IntDir=.\../obj/Release/VirtualDub
-TargetDir=\p4root\dev\out\Release
+TargetDir=\p4root\dev_stable\out\Release
 InputPath=.\res\virtualdub.ami
 
 "$(IntDir)\virtualdub.vdres" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
@@ -501,7 +501,7 @@ InputPath=.\res\virtualdub.ami
 
 # Begin Custom Build - Compiling program resources....
 IntDir=.\../obj/Debug/VirtualDub
-TargetDir=\p4root\dev\out\Debug
+TargetDir=\p4root\dev_stable\out\Debug
 InputPath=.\res\virtualdub.ami
 
 "$(IntDir)\virtualdub.vdres" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
@@ -1462,10 +1462,6 @@ SOURCE=.\h\HexViewer.h
 # Begin Source File
 
 SOURCE=.\h\LevelControl.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\source\LogWindow.h
 # End Source File
 # Begin Source File
 

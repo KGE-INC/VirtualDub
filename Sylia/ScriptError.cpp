@@ -25,13 +25,16 @@ namespace {
 		{ VDScriptError::CLOSEBRACKET_EXPECTED,			"expected ']'" },
 		{ VDScriptError::OUT_OF_STRING_SPACE,			"out of string space" },
 		{ VDScriptError::OUT_OF_MEMORY,					"out of memory" },
-		{ VDScriptError::INTERNAL_ERROR,				"internal error - Birdy goofed" },
+		{ VDScriptError::INTERNAL_ERROR,				"internal error" },
 		{ VDScriptError::EXTERNAL_ERROR,				"error in external Sylia linkages" },
 		{ VDScriptError::VAR_UNDEFINED,					"variable's value is undefined" },
 		{ VDScriptError::FCALL_OUT_OF_RANGE,			"argument out of range" },
 		{ VDScriptError::FCALL_INVALID_PTYPE,			"argument has wrong type" },
 		{ VDScriptError::FCALL_UNKNOWN_STR,				"string argument not recognized" },
 		{ VDScriptError::ARRAY_INDEX_OUT_OF_BOUNDS,		"array index out of bounds" },
+		{ VDScriptError::NUMERIC_OVERFLOW,				"numeric overflow" },
+		{ VDScriptError::STRING_NOT_AN_INTEGER_VALUE,	"string is not an integer number" },
+		{ VDScriptError::STRING_NOT_A_REAL_VALUE,		"string is not an real number" },
 		{ 0, 0 },
 	};
 }

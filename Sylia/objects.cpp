@@ -58,6 +58,61 @@ namespace {
 		// don't need to do anything
 	}
 
+	FUNC(Atoi) {
+		char *s = *argv[0].asString();
+
+		while(*s == ' ')
+			++s;
+
+		errno = 0;
+		int v = (int)strtol(s, &s, 0);
+
+		if (errno && v != 0)
+			SCRIPT_ERROR(NUMERIC_OVERFLOW);
+
+		while(*s == ' ')
+			++s;
+
+		if (*s)
+			SCRIPT_ERROR(STRING_NOT_AN_INTEGER_VALUE);
+
+		argv[0] = (int)v;
+	}
+
+	FUNC(Atol) {
+		const char *s = *argv[0].asString();
+		char dummy;
+		sint64 val;
+
+		int result = sscanf(s, " %I64d %c", &val, &dummy);
+
+		if (result != 1)
+			SCRIPT_ERROR(STRING_NOT_AN_INTEGER_VALUE);
+
+		argv[0] = val;
+	}
+
+	FUNC(Atod) {
+		char *s = *argv[0].asString();
+
+		while(*s == ' ')
+			++s;
+
+		errno = 0;
+		double v = strtod(s, &s);
+
+		if (errno && v != 0)
+			SCRIPT_ERROR(NUMERIC_OVERFLOW);
+
+		while(*s == ' ')
+			++s;
+
+		if (*s)
+			SCRIPT_ERROR(STRING_NOT_A_REAL_VALUE);
+
+		argv[0] = v;
+	}
+
 	FUNC(add_int) {	argv[0] = argv[0].asInt() + argv[1].asInt(); }
 	FUNC(add_long) { argv[0] = argv[0].asLong() + argv[1].asLong(); }
 	FUNC(add_double) { argv[0] = argv[0].asDouble() + argv[1].asDouble(); }
@@ -161,6 +216,9 @@ static const VDScriptFunctionDef objFL_Sylia[]={
 	{ LongToString,		NULL, "sl" },
 	{ DoubleToString,	NULL, "sd" },
 	{ StringToString,	NULL, "ss" },
+	{ Atoi,			"Atoi", "is" },
+	{ Atol,			"Atol", "ls" },
+	{ Atod,			"Atod", "ds" },
 	{ add_int,		"+", "iii" },
 	{ add_long,		NULL, "lll" },
 	{ add_double,	NULL, "ddd" },

@@ -433,6 +433,7 @@ void HexViewer::SetDetails(__int64 total_size, bool bWrite) {
 	bOddHex			= false;
 	bEnableWrite	= bWrite;
 
+	SetScrollPos(hwnd, SB_VERT, 0, FALSE);
 	SetScrollRange(hwnd, SB_VERT, 0, nLineLimit-1, TRUE);
 
 	InvalidateRect(hwnd, NULL, TRUE);

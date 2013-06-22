@@ -102,7 +102,7 @@ static const struct {
 
 ///////////////////////////////////////////////////////////////////////////
 
-struct VDPositionControlW32 : public IVDPositionControl {
+struct VDPositionControlW32 : public vdrefcounted<IVDPositionControl> {
 public:
 	static ATOM Register();
 
@@ -145,7 +145,7 @@ protected:
 		return VDFloorToInt(mPixelToFrameBias + mPixelsPerFrame * pos);
 	}
 
-	const HWND			mhwnd;
+	HWND				mhwnd;
 	HFONT				mFrameFont;
 	int					nFrameCtlHeight;
 	VDFraction			mFrameRate;
@@ -307,7 +307,6 @@ void VDPositionControlW32::SetRange(VDPosition lo, VDPosition hi, bool updateNow
 			mSelectionEnd = mRangeEnd;
 
 		RecomputeMetrics();
-
 		UpdateString();
 	}
 }
@@ -332,7 +331,8 @@ void VDPositionControlW32::SetPosition(VDPosition pos) {
 void VDPositionControlW32::SetDisplayedPosition(VDPosition pos) {
 	UpdateString(pos);
 	RecalcThumbRect(pos, true);
-	UpdateWindow(mhwnd);
+	if (mhwnd)
+		UpdateWindow(mhwnd);
 }
 
 void VDPositionControlW32::SetAutoPositionUpdate(bool autoUpdate) {
@@ -358,7 +358,7 @@ void VDPositionControlW32::SetSelection(VDPosition start, VDPosition end, bool u
 	const int tickHeight = mTickArea.bottom - mTickArea.top;
 
 	// wipe old selection
-	if (mSelectionStart <= mSelectionEnd) {
+	if (mhwnd && mSelectionStart <= mSelectionEnd) {
 		int selx1 = FrameToPixel(mSelectionStart);
 		int selx2 = FrameToPixel(mSelectionEnd);
 
@@ -371,7 +371,7 @@ void VDPositionControlW32::SetSelection(VDPosition start, VDPosition end, bool u
 	mSelectionStart	= start;
 	mSelectionEnd	= end;
 
-	if (mSelectionStart <= mSelectionEnd) {
+	if (mhwnd && mSelectionStart <= mSelectionEnd) {
 		int selx1 = FrameToPixel(mSelectionStart);
 		int selx2 = FrameToPixel(mSelectionEnd);
 
@@ -383,10 +383,14 @@ void VDPositionControlW32::SetSelection(VDPosition start, VDPosition end, bool u
 
 void VDPositionControlW32::SetFrameRate(const VDFraction& frameRate) {
 	mFrameRate = frameRate;
-	UpdateString();
+	if (mhwnd)
+		UpdateString();
 }
 
 void VDPositionControlW32::ResetShuttle() {
+	if (!mhwnd)
+		return;
+
 	CheckDlgButton(mhwnd, IDC_SCENEREV, BST_UNCHECKED);
 	CheckDlgButton(mhwnd, IDC_SCENEFWD, BST_UNCHECKED);
 }
@@ -431,10 +435,12 @@ LRESULT APIENTRY VDPositionControlW32::StaticWndProc(HWND hwnd, UINT msg, WPARAM
 		if (!(pcd = new VDPositionControlW32(hwnd)))
 			return FALSE;
 
+		pcd->AddRef();
 		SetWindowLongPtr(hwnd, 0, (LONG_PTR)pcd);
 		break;
 	case WM_NCDESTROY:
-		delete pcd;
+		pcd->mhwnd = NULL;
+		pcd->Release();
 		SetWindowLongPtr(hwnd, 0, 0);
 		pcd = NULL;
 		break;
@@ -972,6 +978,9 @@ void VDPositionControlW32::OnPaint() {
 }
 
 void VDPositionControlW32::RecomputeMetrics() {
+	if (!mhwnd)
+		return;
+
 	RECT r;
 
 	VDVERIFY(GetClientRect(mhwnd, &r));
@@ -1035,7 +1044,7 @@ void VDPositionControlW32::RecalcThumbRect(VDPosition pos, bool update) {
 	mThumbRect.top		= mTrackArea.top;
 	mThumbRect.bottom	= mTrackArea.bottom;
 
-	if (update && memcmp(&mThumbRect, &rOld, sizeof(RECT))) {
+	if (update && mhwnd && memcmp(&mThumbRect, &rOld, sizeof(RECT))) {
 		InvalidateRect(mhwnd, &rOld, TRUE);
 		InvalidateRect(mhwnd, &mThumbRect, TRUE);
 	}

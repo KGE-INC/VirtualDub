@@ -135,7 +135,7 @@ void VDDubIOThread::ThreadRun() {
 
 				VDDubAutoThreadLocation loc(mpCurrentAction, "stalled due to full pipe to processing thread");
 
-				profchan.Begin(0xe0e0e0, "Idle");
+//				profchan.Begin(0xe0e0e0, "Idle");
 				if (bAudioActive) {
 					if (bVideoActive)
 						mpVideoPipe->getReadSignal().wait(&mpAudioPipe->getReadSignal());
@@ -144,7 +144,7 @@ void VDDubIOThread::ThreadRun() {
 				} else
 					mpVideoPipe->getReadSignal().wait();
 
-				profchan.End();
+//				profchan.End();
 			}
 		}
 	} catch(MyError& e) {

@@ -294,7 +294,17 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 			{
 				MSG msg;
 
-				while(GetMessage(&msg, NULL, 0, 0)) {
+				for(;;) {
+					BOOL result = GetMessage(&msg, NULL, 0, 0);
+
+					if (result == (BOOL)-1)
+						break;
+
+					if (!result) {
+						PostQuitMessage(msg.wParam);
+						break;
+					}
+
 					TranslateMessage(&msg);
 					DispatchMessage(&msg);
 				}

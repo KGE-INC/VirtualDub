@@ -136,15 +136,20 @@ void guiOpenDebug() {
 
 ////////////////////////////////////////////////////////////////////////////
 
-void guiDlgMessageLoop(HWND hDlg) {
+bool guiDlgMessageLoop(HWND hDlg) {
 	MSG msg;
 
 	while(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+		if (msg.message == WM_QUIT)
+			return false;
+
 		if (!hDlg || !IsWindow(hDlg) || !IsDialogMessage(hDlg, &msg)) {
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
 	}
+
+	return true;
 }
 
 bool guiCheckDialogs(LPMSG pMsg) {

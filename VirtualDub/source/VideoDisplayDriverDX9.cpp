@@ -226,6 +226,8 @@ public:
 
 	IDirect3DSurface9	*GetRenderTarget() const { return mpD3DRTMain; }
 	IDirect3DTexture9	*GetVertRenderTexture() const { return mpD3DRTVert; }
+	int GetMainRTWidth() const { return mPresentParms.BackBufferWidth; }
+	int GetMainRTHeight() const { return mPresentParms.BackBufferHeight; }
 	float GetVertUScale() const { return mRTVertUScale; }
 	float GetVertVScale() const { return mRTVertVScale; }
 	int GetVertUSize() const { return mRTVertUSize; }
@@ -1292,7 +1294,6 @@ protected:
 	void InitBicubic();
 	void ShutdownBicubic();
 	bool Paint_FF2(HDC hdc, const RECT& rClient);
-	bool Paint_FF2_Fast(HDC hdc, const RECT& rClient);
 	bool Paint_FF3(HDC hdc, const RECT& rClient);
 	bool Paint_PS1_1(HDC hdc, const RECT& rClient);
 	bool Paint_PS1_4(HDC hdc, const RECT& rClient);
@@ -1521,6 +1522,8 @@ void VDVideoDisplayMinidriverDX9::Refresh(FieldMode) {
 }
 
 bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient) {
+	const RECT rClippedClient={0,0,std::min<int>(rClient.right, mpManager->GetMainRTWidth()), std::min<int>(rClient.bottom, mpManager->GetMainRTHeight())};
+
 	// Make sure the device is sane.
 	if (!mpManager->CheckDevice())
 		return false;
@@ -1530,6 +1533,10 @@ bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient) {
 
 	if (mode == kFilterAnySuitable)
 		mode = kFilterBicubic;
+
+	// bicubic modes cannot clip
+	if (rClient.right != rClippedClient.right || rClient.bottom != rClippedClient.bottom)
+		mode = kFilterBilinear;
 
 	if (mode != kFilterBicubic && mbCubicInitialized)
 		ShutdownBicubic();
@@ -1620,6 +1627,7 @@ bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient) {
 	D3D_DO(SetIndices(mpManager->GetIndexBuffer()));
 	D3D_DO(SetFVF(D3DFVF_XYZ | D3DFVF_DIFFUSE | D3DFVF_TEX5));
 	D3D_DO(SetRenderState(D3DRS_LIGHTING, FALSE));
+	D3D_DO(SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE));
 
 	bool bSuccess;
 
@@ -1635,7 +1643,6 @@ bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient) {
 			bSuccess = Paint_FF3(hdc, rClient);
 			break;
 		case VDVideoDisplayDX9Manager::kCubicUseFF2Path:
-//			bSuccess = Paint_FF2_Fast(hdc, rClient);
 			bSuccess = Paint_FF2(hdc, rClient);
 			break;
 		}
@@ -1646,33 +1653,33 @@ bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient) {
 		D3DVIEWPORT9 vp = {
 			0,
 			0,
-			rClient.right,
-			rClient.bottom,
+			rClippedClient.right,
+			rClippedClient.bottom,
 			0.f,
 			1.f
 		};
 		VDVERIFY(SUCCEEDED(mpD3DDevice->SetViewport(&vp)));
 		D3D_DO(SetTransform(D3DTS_PROJECTION, &mWholeProjection));
 
-		if (Vertex *pvx = mpManager->LockVertices(4)) {
+		if (Vertex *pvx = mpManager->LockVertices(3)) {
 			float umax = (float)mSource.pixmap.w / (float)mTexFmt.w;
 			float vmax = (float)mSource.pixmap.h / (float)mTexFmt.h;
+			float x0 = -1.f;
+			float x1 = -1.f + 4.0f*(rClient.right / rClippedClient.right);
+			float y0 = 1.f;
+			float y1 = 1.f - 4.0f*(rClient.bottom / rClippedClient.bottom);
 
-			pvx[0].SetFF1(-1, +1, 0, 0);
-			pvx[1].SetFF1(-1, -1, 0, vmax);
-			pvx[2].SetFF1(+1, -1, umax, vmax);
-			pvx[3].SetFF1(+1, +1, umax, 0);
+			pvx[0].SetFF1(x0, y0, 0, 0);
+			pvx[1].SetFF1(x0, y1, 0, vmax*2);
+			pvx[2].SetFF1(x1, y0, umax*2, 0);
 
 			mpManager->UnlockVertices();
 		}
 
-		if (uint16 *dst = mpManager->LockIndices(6)) {
+		if (uint16 *dst = mpManager->LockIndices(3)) {
 			dst[0] = 0;
-			dst[1] = 2;
-			dst[2] = 1;
-			dst[3] = 0;
-			dst[4] = 3;
-			dst[5] = 2;
+			dst[1] = 1;
+			dst[2] = 2;
 
 			mpManager->UnlockIndices();
 		}
@@ -1900,325 +1907,6 @@ bool VDVideoDisplayMinidriverDX9::Paint_FF2(HDC hdc, const RECT& rClient) {
 	D3D_DO(SetTexture(0, NULL));
 	D3D_DO(EndScene());
 
-	return true;
-}
-
-///////////////////////////////////////////////////////////////////////////
-//
-//
-//	Fixed function path - 2 texture stages + 2 color channels (NVIDIA GeForce2 / GeForce4 MX)
-//
-//
-///////////////////////////////////////////////////////////////////////////
-
-bool VDVideoDisplayMinidriverDX9::Paint_FF2_Fast(HDC hdc, const RECT& rClient) {
-	D3D_DO(SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE));
-	D3D_DO(SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ONE));
-
-	D3D_DO(SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, 0));
-	D3D_DO(SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP));
-	D3D_DO(SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP));
-	D3D_DO(SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_POINT));
-	D3D_DO(SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_POINT));
-	D3D_DO(SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_POINT));
-
-	D3D_DO(SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 1));
-	D3D_DO(SetSamplerState(1, D3DSAMP_ADDRESSU, D3DTADDRESS_WRAP));
-	D3D_DO(SetSamplerState(1, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP));
-	D3D_DO(SetSamplerState(1, D3DSAMP_MAGFILTER, D3DTEXF_POINT));
-	D3D_DO(SetSamplerState(1, D3DSAMP_MINFILTER, D3DTEXF_POINT));
-	D3D_DO(SetSamplerState(1, D3DSAMP_MIPFILTER, D3DTEXF_POINT));
-
-	uint32 texture[4][256];
-
-	mpManager->MakeCubic4Texture(&texture[0][0], 256*sizeof(uint32), -0.75, VDVideoDisplayDX9Manager::kCubicUseFF2Path);
-
-	// PASS 1: Horizontal filtering
-
-	IDirect3DSurface9 *pRTSurface;
-	VDVERIFY(SUCCEEDED(mpD3DRTHoriz->GetSurfaceLevel(0, &pRTSurface)));
-	D3D_DO(SetRenderTarget(0, pRTSurface));
-	pRTSurface->Release();
-
-	D3D_DO(BeginScene());
-
-	mpManager->SetTextureStageOp(0, D3DTA_TEXTURE, D3DTOP_MODULATE, D3DTA_DIFFUSE, D3DTA_CURRENT, D3DTOP_SELECTARG1, D3DTA_CURRENT);
-	mpManager->SetTextureStageOp(1, D3DTA_DIFFUSE | D3DTA_ALPHAREPLICATE, D3DTOP_MULTIPLYADD, D3DTA_TEXTURE, D3DTA_CURRENT, D3DTOP_SELECTARG1, D3DTA_CURRENT);
-	D3D_DO(SetTextureStageState(1, D3DTSS_COLORARG0, D3DTA_CURRENT));
-
-	D3DVIEWPORT9 vphoriz = {
-		0,
-		0,
-		mRTHorizUSize,
-		mRTHorizVSize,
-		0.f,
-		1.f
-	};
-	D3D_DO(SetTransform(D3DTS_PROJECTION, &mHorizProjection));
-
-	VDVERIFY(SUCCEEDED(mpD3DDevice->SetViewport(&vphoriz)));
-
-	D3D_DO(SetTexture(0, mpD3DImageTexture));
-	D3D_DO(SetTexture(1, mpD3DImageTexture));
-
-	for(int hpass=0; hpass<2; ++hpass) {
-		const float ufactor = 1.0f / (float)mTexFmt.w;
-		const float vfactor = 1.0f / (float)mTexFmt.h;
-		const float xstep = 2.0f * mRTHorizUScale;
-
-		uint32 filtstep		= (mSource.pixmap.w << 16) / rClient.right;
-		uint32 filtaccum	= 0-0x8000+(filtstep >> 1);
-
-		const float y0 = 1.f - mSource.pixmap.h * (2.0f * mRTHorizVScale);
-		const float y1 = 1.f;
-		const float v0 = 0.0f;
-		const float v1 = v0 + mSource.pixmap.h * vfactor;
-
-		float x0 = -1.0f;
-		float x1 = -1.0f + xstep;
-		const float ustep = (float)mSource.pixmap.w / (float)rClient.right * ufactor;
-		float u0 = 0.5f * ustep;
-		float u1 = u0;
-
-		if (hpass == 0) {
-			u0 += -0.5f * ufactor;
-			u1 += +0.5f * ufactor;
-		} else {
-			u0 += -1.5f * ufactor;
-			u1 += +1.5f * ufactor;
-		}
-
-		if (!hpass) {
-			D3D_DO(SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE));
-		} else {
-			D3D_DO(SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE));
-			D3D_DO(SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_REVSUBTRACT));
-		}
-
-		const uint32 *coeffs = texture[!hpass];
-
-		const float udelta = hpass ? 3*ufactor : ufactor;
-
-		int col = 0;
-		while(col < rClient.right) {
-			int ncols = rClient.right - col;
-
-			if (ncols > kVertexBufferSize / 4)
-				ncols = kVertexBufferSize / 4;
-
-			if (Vertex *pvx = mpManager->LockVertices(ncols * 4)) {
-				for(int limit = col + ncols; col < limit; ++col) {
-					uint32 coeff0 = (coeffs[(filtaccum>>10)&63] & 0xfefefefe)>>1;
-					float u = ((filtaccum>>16) + 0.5 + (hpass?-2.0:-1.0)) * ufactor;
-
-					pvx[0].SetFF2(x0, y1, coeff0, u, v0, u+udelta, v0);
-					pvx[1].SetFF2(x0, y0, coeff0, u, v1, u+udelta, v1);
-					pvx[2].SetFF2(x1, y0, coeff0, u, v1, u+udelta, v1);
-					pvx[3].SetFF2(x1, y1, coeff0, u, v0, u+udelta, v0);
-
-					x0 += xstep;
-					x1 += xstep;
-					u0 += ustep;
-					u1 += ustep;
-					filtaccum += filtstep;
-
-					pvx += 4;
-				}
-
-				mpManager->UnlockVertices();
-			}
-
-			if (uint16 *pvx = mpManager->LockIndices(ncols * 6)) {
-				for(int i=0; i<ncols; ++i) {
-					pvx[0] = (uint16)(i*4 + 0);
-					pvx[1] = (uint16)(i*4 + 2);
-					pvx[2] = (uint16)(i*4 + 1);
-					pvx[3] = (uint16)(i*4 + 0);
-					pvx[4] = (uint16)(i*4 + 3);
-					pvx[5] = (uint16)(i*4 + 2);
-					pvx += 6;
-				}
-
-				mpManager->UnlockIndices();
-			}
-
-			mpManager->DrawElements(D3DPT_TRIANGLELIST, 0, ncols * 4, 0, ncols * 2);
-		}
-	}
-
-	D3D_DO(SetTexture(1, NULL));
-	D3D_DO(SetTexture(0, NULL));
-	D3D_DO(EndScene());
-
-	// PASS 2: Vertical filtering
-
-	VDVERIFY(SUCCEEDED(mpManager->GetVertRenderTexture()->GetSurfaceLevel(0, &pRTSurface)));
-	D3D_DO(SetRenderTarget(0, pRTSurface));
-	pRTSurface->Release();
-
-	D3D_DO(BeginScene());
-	D3D_DO(SetTransform(D3DTS_PROJECTION, &mVertProjection));
-
-	mpManager->SetTextureStageOp(0, D3DTA_TEXTURE, D3DTOP_MODULATE, D3DTA_DIFFUSE, D3DTA_CURRENT, D3DTOP_SELECTARG1, D3DTA_CURRENT);
-	mpManager->SetTextureStageOp(1, D3DTA_DIFFUSE | D3DTA_ALPHAREPLICATE, D3DTOP_MULTIPLYADD, D3DTA_TEXTURE, D3DTA_CURRENT, D3DTOP_SELECTARG1, D3DTA_CURRENT);
-	D3D_DO(SetTextureStageState(1, D3DTSS_COLORARG0, D3DTA_CURRENT));
-
-	D3D_DO(SetRenderState(D3DRS_DITHERENABLE, FALSE));
-
-	D3DVIEWPORT9 vpfb = {
-		0,
-		0,
-		mpManager->GetVertUSize(),
-		mpManager->GetVertVSize(),
-		0.f,
-		1.f
-	};
-	VDVERIFY(SUCCEEDED(mpD3DDevice->SetViewport(&vpfb)));
-
-	D3D_DO(SetTexture(0, mpD3DRTHoriz));
-	D3D_DO(SetTexture(1, mpD3DRTHoriz));
-
-	for(int vpass=0; vpass<2; ++vpass) {
-		const float ufactor = mRTHorizUScale;
-		const float vfactor = mRTHorizVScale;
-		const float ystep = 2.0f * mpManager->GetVertVScale();
-
-		uint32 filtstep		= (mSource.pixmap.h << 16) / rClient.bottom;
-		uint32 filtaccum	= 0-0x8000+(filtstep >> 1);
-
-		const float x0 = -1.f;
-		const float x1 = -1.f + rClient.right * (2.0f * mpManager->GetVertUScale());
-		const float u0 = 0.0f;
-		const float u1 = rClient.right * ufactor;
-
-		float y0 = 1.0f;
-		float y1 = 1.0f - ystep;
-		const float vstep = (float)mSource.pixmap.h / (float)rClient.bottom * vfactor;
-		float v0 = 0.5f * vstep;
-		float v1 = v0;
-
-		if (vpass == 0) {
-			v0 += -0.5f * vfactor;
-			v1 += +0.5f * vfactor;
-		} else {
-			v0 += -1.5f * vfactor;
-			v1 += +1.5f * vfactor;
-		}
-
-		if (!vpass) {
-			D3D_DO(SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE));
-		} else {
-			D3D_DO(SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE));
-			D3D_DO(SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_REVSUBTRACT));
-		}
-
-		const uint32 *coeffs = texture[!vpass];
-		const float vdelta = vpass ? 3*vfactor : vfactor;
-
-		int row = 0;
-		while(row < rClient.bottom) {
-			int nrows = rClient.bottom - row;
-
-			if (nrows > kVertexBufferSize / 4)
-				nrows = kVertexBufferSize / 4;
-
-			if (Vertex *pvx = mpManager->LockVertices(nrows * 4)) {
-				for(int limit = row + nrows; row < limit; ++row) {
-					uint32 coeff0 = coeffs[(filtaccum>>10)&63];
-					float v = ((filtaccum>>16) + 0.5 + (vpass?-2.0:-1.0)) * vfactor;
-
-					pvx[0].SetFF2(x0, y1, coeff0, u0, v, u0, v+vdelta);
-					pvx[1].SetFF2(x1, y1, coeff0, u1, v, u1, v+vdelta);
-					pvx[2].SetFF2(x1, y0, coeff0, u1, v, u1, v+vdelta);
-					pvx[3].SetFF2(x0, y0, coeff0, u0, v, u0, v+vdelta);
-
-					y0 -= ystep;
-					y1 -= ystep;
-					v0 += vstep;
-					v1 += vstep;
-					filtaccum += filtstep;
-
-					pvx += 4;
-				}
-
-				mpManager->UnlockVertices();
-			}
-
-			if (uint16 *pvx = mpManager->LockIndices(nrows * 6)) {
-				for(int i=0; i<nrows; ++i) {
-					pvx[0] = (uint16)(i*4 + 0);
-					pvx[1] = (uint16)(i*4 + 2);
-					pvx[2] = (uint16)(i*4 + 1);
-					pvx[3] = (uint16)(i*4 + 0);
-					pvx[4] = (uint16)(i*4 + 3);
-					pvx[5] = (uint16)(i*4 + 2);
-					pvx += 6;
-				}
-
-				mpManager->UnlockIndices();
-			}
-
-			mpManager->DrawElements(D3DPT_TRIANGLELIST, 0, nrows * 4, 0, nrows * 2);
-		}
-	}
-
-	D3D_DO(SetTexture(1, NULL));
-	D3D_DO(SetTexture(0, NULL));
-	D3D_DO(EndScene());
-
-	D3D_DO(SetRenderTarget(0, mpManager->GetRenderTarget()));
-	D3D_DO(BeginScene());
-	D3D_DO(SetTransform(D3DTS_PROJECTION, &mWholeProjection));
-
-	D3DVIEWPORT9 vpmain = {
-		0,
-		0,
-		rClient.right,
-		rClient.bottom,
-		0.f,
-		1.f
-	};
-	VDVERIFY(SUCCEEDED(mpD3DDevice->SetViewport(&vpmain)));
-
-	mpManager->SetTextureStageOp(0, D3DTA_TEXTURE, D3DTOP_ADD, D3DTA_TEXTURE, D3DTA_TEXTURE, D3DTOP_ADD, D3DTA_TEXTURE);
-	mpManager->DisableTextureStage(1);
-	mpManager->DisableTextureStage(2);
-
-	if (uint16 *dst = mpManager->LockIndices(6)) {
-		dst[0] = 0;
-		dst[1] = 2;
-		dst[2] = 1;
-		dst[3] = 0;
-		dst[4] = 3;
-		dst[5] = 2;
-
-		mpManager->UnlockIndices();
-	}
-
-	if (Vertex *pvx = mpManager->LockVertices(4)) {
-		const float ustep = mpManager->GetVertUScale();
-		const float vstep = mpManager->GetVertVScale();
-		const float u0 = 0.0f;
-		const float v0 = 0.0f;
-		const float u1 = u0 + rClient.right * ustep;
-		const float v1 = v0 + rClient.bottom * vstep;
-
-		pvx[ 0].SetFF2(-1, +1, 0x40404040, u0, v0, 0.f, 0.f);
-		pvx[ 1].SetFF2(-1, -1, 0x40404040, u0, v1, 0.f, 0.f);
-		pvx[ 2].SetFF2(+1, -1, 0x40404040, u1, v1, 0.f, 0.f);
-		pvx[ 3].SetFF2(+1, +1, 0x40404040, u1, v0, 0.f, 0.f);
-
-		mpManager->UnlockVertices();
-	}
-
-	D3D_DO(SetTexture(0, mpManager->GetVertRenderTexture()));
-	D3D_DO(SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE));
-	D3D_DO(SetRenderState(D3DRS_DITHERENABLE, TRUE));
-
-	mpManager->DrawElements(D3DPT_TRIANGLELIST, 0, 4, 0, 2);
-
-	D3D_DO(SetTexture(0, NULL));
-	D3D_DO(EndScene());
 	return true;
 }
 

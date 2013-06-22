@@ -89,6 +89,11 @@ void ProgressDialog::check() {
 	dwLastTime = dwTime;
 
 	while(PeekMessage(&msg, mhwndParent ? NULL : hwndDialog, 0, 0, PM_REMOVE)) {
+		if (msg.message == WM_QUIT && fAbortEnabled) {
+			PostQuitMessage(msg.wParam);
+			throw MyUserAbortError();
+		}
+
 		if (!IsWindow(hwndDialog) || !IsDialogMessage(hwndDialog, &msg)) {
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
@@ -136,6 +141,19 @@ INT_PTR CALLBACK ProgressDialog::ProgressDlgProc(HWND hDlg, UINT msg, WPARAM wPa
 
 			SetTimer(hDlg, 1, 500, NULL);
 
+			{
+				bool vis = true;
+
+				if (HWND hwndParent = GetParent(hDlg)) {
+					while (GetWindowLong(hwndParent, GWL_STYLE) & WS_CHILD)
+						hwndParent = GetParent(hwndParent);
+
+					if (IsIconic(hwndParent))
+						vis = false;
+				}
+
+				ShowWindow(hDlg, vis ? SW_SHOW : SW_SHOWMINNOACTIVE);
+			}
 			break;
 
 		case WM_TIMER:

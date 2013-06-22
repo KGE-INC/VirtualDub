@@ -603,7 +603,7 @@ void VideoSourceAVI::_construct() {
 			int realsize = pFormat->biSize;
 
 			if (realsize >= sizeof(BITMAPINFOHEADER)) {
-				realsize += sizeof(RGBQUAD) * pFormat->biClrUsed;
+				realsize = VDGetSizeOfBitmapHeaderW32(pFormat);
 
 				if (realsize < format.size()) {
 					VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_FixingHugeVideoFormat, 2, &badsize, &realsize);
@@ -625,9 +625,18 @@ void VideoSourceAVI::_construct() {
 	mpTargetFormatHeader.resize(format_len);
 
 	// initialize pixmap palette
+	int palEnts = 0;
+
+	if (bmih->biBitCount <= 8) {
+		palEnts = bmih->biClrUsed;
+
+		if (!palEnts)
+			palEnts = 1 << bmih->biBitCount;
+	}
+
 	if (bmih->biClrUsed > 0) {
 		memset(mPalette, 0, sizeof mPalette);
-		memcpy(mPalette, (const uint32 *)((const char *)bmih + bmih->biSize), std::min<size_t>(256, bmih->biClrUsed) * 4);
+		memcpy(mPalette, (const uint32 *)((const char *)bmih + bmih->biSize), std::min<size_t>(256, palEnts) * 4);
 	}
 
 
@@ -635,17 +644,17 @@ void VideoSourceAVI::_construct() {
 	// zero is a valid value for BI_RGB, but it's annoying!
 
 	if (bmih->biCompression == BI_RGB || bmih->biCompression == BI_BITFIELDS) {
-		if (bmih->biPlanes == 1) {
-			long nPitch = ((bmih->biWidth * bmih->biBitCount + 31) >> 5) * 4 * bmih->biHeight;
-
-			bmih->biSizeImage = nPitch;
-		}
-
 		// Check for an inverted DIB.  If so, silently flip it around.
 
 		if ((long)bmih->biHeight < 0) {
 			bmih->biHeight = abs((long)bmih->biHeight);
 			bInvertFrames = true;
+		}
+
+		if (bmih->biPlanes == 1) {
+			long nPitch = ((bmih->biWidth * bmih->biBitCount + 31) >> 5) * 4 * bmih->biHeight;
+
+			bmih->biSizeImage = nPitch;
 		}
 	}
 
@@ -737,6 +746,9 @@ void VideoSourceAVI::_construct() {
 			case '024I':		// I420
 				mSourceLayout.format = nsVDPixmap::kPixFormat_YUV420_Planar;
 				mSourceVariant = 2;
+				break;
+			case '  8Y':		// Y8
+				mSourceLayout.format = nsVDPixmap::kPixFormat_Y8;
 				break;
 			}
 		}
@@ -1700,7 +1712,7 @@ const void *VideoSourceAVI::streamGetFrame(const void *inputBuffer, uint32 data_
 				VDLogAppMessage(kVDLogWarning, kVDST_VideoSource, kVDM_FrameTooShort, 3, &frame, &actual, &expected);
 				to_copy = data_len;
 			} else
-				throw MyError("VideoSourceAVI: uncompressed frame %u is short (expected %d bytes, got %d)", frame_num, to_copy, data_len);
+				throw MyError("VideoSourceAVI: uncompressed frame %I64u is short (expected %d bytes, got %d)", frame_num, to_copy, data_len);
 		}
 		
 		memcpy((void *)getFrameBuffer(), inputBuffer, to_copy);
@@ -1815,6 +1827,7 @@ const void *VideoSourceAVI::getFrame(VDPosition lFrameDesired) {
 		mpDecompressor->Start();
 
 	lLastFrame = -1;		// In case we encounter an exception.
+	stream_current_frame	= -1;	// invalidate streaming frame
 
 	vdblock<char>	dataBuffer;
 	do {

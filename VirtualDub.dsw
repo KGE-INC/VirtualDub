@@ -8,7 +8,7 @@ Project: "Ami"=.\Ami\Ami.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    "//depot/VirtualDub/1.x/main/Ami"
+    "//depot/VirtualDub/1.x/stable16/Ami"
     .\ami
     end source code control
 }}}
@@ -24,7 +24,7 @@ Project: "Asuka"=.\Asuka\Asuka.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    "//depot/VirtualDub/1.x/main/Asuka"
+    "//depot/VirtualDub/1.x/stable16/Asuka"
     .\asuka
     end source code control
 }}}
@@ -40,7 +40,7 @@ Project: "Dita"=.\Dita\Dita.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    "//depot/VirtualDub/1.x/main/Dita"
+    "//depot/VirtualDub/1.x/stable16/Dita"
     .\dita
     end source code control
 }}}
@@ -56,7 +56,7 @@ Project: "Docs"=.\VirtualDub\docs\Docs.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    "//depot/VirtualDub/1.x/main/VirtualDub/docs"
+    "//depot/VirtualDub/1.x/stable16/VirtualDub/docs"
     .\virtualdub\docs
     end source code control
 }}}
@@ -72,7 +72,7 @@ Project: "Kasumi"=.\Kasumi\Kasumi.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    "//depot/VirtualDub/1.x/main/Kasumi"
+    "//depot/VirtualDub/1.x/stable16/Kasumi"
     .\kasumi
     end source code control
 }}}
@@ -88,7 +88,7 @@ Project: "Lina"=.\Lina\Lina.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    "//depot/VirtualDub/1.x/main/Lina"
+    "//depot/VirtualDub/1.x/stable16/Lina"
     .\lina
     end source code control
 }}}
@@ -104,7 +104,7 @@ Project: "Meia"=.\Meia\Meia.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    "//depot/VirtualDub/1.x/main"
+    "//depot/VirtualDub/1.x/stable16"
     .
     end source code control
 }}}
@@ -120,7 +120,7 @@ Project: "Priss"=.\Priss\Priss.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    "//depot/VirtualDub/1.x/main/Priss"
+    "//depot/VirtualDub/1.x/stable16/Priss"
     .\priss
     end source code control
 }}}
@@ -136,7 +136,7 @@ Project: "Riza"=.\Riza\Riza.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    "//depot/VirtualDub/1.x/main/Riza"
+    "//depot/VirtualDub/1.x/stable16/Riza"
     .\riza
     end source code control
 }}}
@@ -152,7 +152,7 @@ Project: "Setup"=.\Setup\Setup.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    "//depot/VirtualDub/1.x/main/Setup"
+    "//depot/VirtualDub/1.x/stable16/Setup"
     .\setup
     end source code control
 }}}
@@ -168,7 +168,7 @@ Project: "Sylia"=.\Sylia\Sylia.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    "//depot/VirtualDub/1.x/main/Sylia"
+    "//depot/VirtualDub/1.x/stable16/Sylia"
     .\sylia
     end source code control
 }}}
@@ -184,7 +184,7 @@ Project: "VirtualDub"=.\VirtualDub\VirtualDub.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    "//depot/VirtualDub/1.x/main/VirtualDub"
+    "//depot/VirtualDub/1.x/stable16/VirtualDub"
     .\virtualdub
     end source code control
 }}}
@@ -218,6 +218,9 @@ Package=<4>
     Begin Project Dependency
     Project_Dep_Name Asuka
     End Project Dependency
+    Begin Project Dependency
+    Project_Dep_Name vdub
+    End Project Dependency
 }}}
 
 ###############################################################################
@@ -227,7 +230,7 @@ Project: "disasm"=.\disasm\disasm.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    "//depot/VirtualDub/1.x/main/disasm"
+    "//depot/VirtualDub/1.x/stable16/disasm"
     .\disasm
     end source code control
 }}}
@@ -243,7 +246,7 @@ Project: "helpfile"=.\helpfile\helpfile.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    "//depot/VirtualDub/1.x/main/helpfile"
+    "//depot/VirtualDub/1.x/stable16/helpfile"
     .\helpfile
     end source code control
 }}}
@@ -262,7 +265,7 @@ Project: "samplefilter"=.\samplefilter\samplefilter.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    "//depot/VirtualDub/1.x/main/samplefilter"
+    "//depot/VirtualDub/1.x/stable16/samplefilter"
     .\samplefilter
     end source code control
 }}}
@@ -278,7 +281,7 @@ Project: "system"=.\system\system.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    "//depot/VirtualDub/1.x/main/system"
+    "//depot/VirtualDub/1.x/stable16/system"
     .\system
     end source code control
 }}}
@@ -289,12 +292,34 @@ Package=<4>
 
 ###############################################################################
 
+Project: "test"=.\test\test.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+    begin source code control
+    Perforce Project
+    .\test
+    end source code control
+}}}
+
+Package=<4>
+{{{
+    Begin Project Dependency
+    Project_Dep_Name Kasumi
+    End Project Dependency
+    Begin Project Dependency
+    Project_Dep_Name system
+    End Project Dependency
+}}}
+
+###############################################################################
+
 Project: "vdicmdrv"=.\vdicmdrv\vdicmdrv.dsp - Package Owner=<4>
 
 Package=<5>
 {{{
     begin source code control
-    "//depot/VirtualDub/1.x/main/vdicmdrv"
+    "//depot/VirtualDub/1.x/stable16/vdicmdrv"
     .\vdicmdrv
     end source code control
 }}}
@@ -313,7 +338,7 @@ Project: "vdremote"=.\vdremote\vdremote.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    "//depot/VirtualDub/1.x/main/vdremote"
+    "//depot/VirtualDub/1.x/stable16/vdremote"
     .\vdremote
     end source code control
 }}}
@@ -332,8 +357,24 @@ Project: "vdsvrlnk"=.\vdsvrlnk\vdsvrlnk.dsp - Package Owner=<4>
 Package=<5>
 {{{
     begin source code control
-    "//depot/VirtualDub/1.x/main/vdsvrlnk"
+    "//depot/VirtualDub/1.x/stable16/vdsvrlnk"
     .\vdsvrlnk
+    end source code control
+}}}
+
+Package=<4>
+{{{
+}}}
+
+###############################################################################
+
+Project: "vdub"=.\vdub\vdub.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+    begin source code control
+    "//depot/VirtualDub/1.x/stable16/vdub"
+    .\vdub
     end source code control
 }}}
 

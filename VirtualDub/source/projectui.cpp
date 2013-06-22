@@ -21,6 +21,7 @@
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/filesys.h>
 #include <vd2/system/registry.h>
+#include <vd2/system/w32assist.h>
 #include <vd2/Dita/services.h>
 #include <vd2/Dita/resources.h>
 #include "projectui.h"
@@ -48,7 +49,7 @@
 
 ///////////////////////////////////////////////////////////////////////////
 
-#define MRU_LIST_POSITION		(26)
+#define MRU_LIST_POSITION		(27)
 
 namespace {
 	enum {
@@ -65,6 +66,12 @@ namespace {
 		kVDM_TitleIdle,
 		kVDM_TitleFileLoaded,
 		kVDM_TitleRunning,
+		kVDM_Undo,
+		kVDM_Redo
+	};
+
+	enum {
+		kMenuPos_Go					= 2
 	};
 }
 
@@ -352,6 +359,8 @@ bool VDProjectUI::Attach(VDGUIHandle hwnd) {
 	SetMenu((HWND)mhwnd, mhMenuNormal);
 	UpdateMRUList();
 
+	SetUICallback(this);
+
 	UISourceFileUpdated();		// reset title bar
 	UIDubParametersUpdated();	// reset timeline parameters
 	UITimelineUpdated();		// reset the timeline
@@ -364,6 +373,10 @@ bool VDProjectUI::Attach(VDGUIHandle hwnd) {
 
 void VDProjectUI::Detach() {
 	DragAcceptFiles((HWND)mhwnd, FALSE);
+
+	SetUICallback(NULL);
+
+	mpPosition = NULL;
 
 	if (mhwndStatus) {
 		DestroyWindow(mhwndStatus);
@@ -543,7 +556,11 @@ void VDProjectUI::SaveConfigurationAsk() {
 }
 
 void VDProjectUI::LoadConfigurationAsk() {
-	RunScript(NULL, (void *)mhwnd);
+	try {
+		RunScript(NULL, (void *)mhwnd);
+	} catch(const MyError& e) {
+		e.post((HWND)mhwnd, g_szError);
+	}
 }
 
 void VDProjectUI::SetVideoFiltersAsk() {
@@ -732,6 +749,7 @@ bool VDProjectUI::MenuHit(UINT id) {
 		case ID_FILE_PREVIEWINPUT:				PreviewInput();				break;
 		case ID_FILE_PREVIEWOUTPUT:				PreviewOutput();				break;
 		case ID_FILE_PREVIEWAVI:				PreviewAll();					break;
+		case ID_FILE_RUNVIDEOANALYSISPASS:		RunNullVideoPass();			break;
 		case ID_FILE_SAVEAVI:					SaveAVIAsk();					break;
 		case ID_FILE_SAVECOMPATIBLEAVI:			SaveCompatibleAVIAsk();		break;
 		case ID_FILE_SAVESTRIPEDAVI:			SaveStripedAVIAsk();			break;
@@ -761,6 +779,9 @@ bool VDProjectUI::MenuHit(UINT id) {
 			extern void VDDisplayFileTextInfoDialog(VDGUIHandle hParent, std::list<std::pair<uint32, VDStringA> >&);
 			VDDisplayFileTextInfoDialog(mhwnd, mTextInfo);
 			break;
+
+		case ID_EDIT_UNDO:						Undo();						break;
+		case ID_EDIT_REDO:						Redo();						break;
 
 		case ID_EDIT_CUT:						Cut();						break;
 		case ID_EDIT_COPY:						Copy();						break;
@@ -1027,6 +1048,7 @@ void VDProjectUI::UpdateMainMenu(HMENU hMenu) {
 	VDEnableMenuItemW32(hMenu,ID_FILE_PREVIEWAVI			, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu,ID_FILE_PREVIEWINPUT			, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu,ID_FILE_PREVIEWOUTPUT			, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu,ID_FILE_RUNVIDEOANALYSISPASS	, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu,ID_FILE_SAVEAVI				, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu,ID_FILE_SAVECOMPATIBLEAVI		, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu,ID_FILE_SAVESTRIPEDAVI		, bSourceFileExists);
@@ -1046,6 +1068,26 @@ void VDProjectUI::UpdateMainMenu(HMENU hMenu) {
 	VDEnableMenuItemW32(hMenu, ID_EDIT_PASTE				, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_EDIT_DELETE				, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_EDIT_CLEAR				, bSelectionExists);
+	VDEnableMenuItemW32(hMenu, ID_EDIT_SETSELSTART			, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_EDIT_SETSELEND			, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_EDIT_MASK					, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_EDIT_UNMASK				, bSourceFileExists);
+	VDEnableMenuItemW32(hMenu, ID_EDIT_RESET				, bSourceFileExists);
+
+	const wchar_t *undoAction = GetCurrentUndoAction();
+	const wchar_t *redoAction = GetCurrentRedoAction();
+
+	VDEnableMenuItemW32(hMenu, ID_EDIT_UNDO, bSourceFileExists && undoAction);
+	VDEnableMenuItemW32(hMenu, ID_EDIT_REDO, bSourceFileExists && redoAction);
+
+	if (!undoAction)
+		undoAction = L"";
+	if (!redoAction)
+		redoAction = L"";
+
+	VDSetMenuItemTextByCommandW32(hMenu, ID_EDIT_UNDO, VDswprintf(VDLoadString(0, kVDST_ProjectUI, kVDM_Undo), 1, &undoAction).c_str());
+	VDSetMenuItemTextByCommandW32(hMenu, ID_EDIT_REDO, VDswprintf(VDLoadString(0, kVDST_ProjectUI, kVDM_Redo), 1, &redoAction).c_str());
+
 	VDEnableMenuItemW32(hMenu, ID_EDIT_SELECTALL			, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_VIDEO_SEEK_START			, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_VIDEO_SEEK_END			, bSourceFileExists);
@@ -1062,11 +1104,7 @@ void VDProjectUI::UpdateMainMenu(HMENU hMenu) {
 	VDEnableMenuItemW32(hMenu, ID_VIDEO_SEEK_SELSTART		, bSelectionExists);
 	VDEnableMenuItemW32(hMenu, ID_VIDEO_SEEK_SELEND			, bSelectionExists);
 	VDEnableMenuItemW32(hMenu, ID_EDIT_JUMPTO				, bSourceFileExists);
-	VDEnableMenuItemW32(hMenu, ID_EDIT_SETSELSTART			, bSourceFileExists);
-	VDEnableMenuItemW32(hMenu, ID_EDIT_SETSELEND			, bSourceFileExists);
-	VDEnableMenuItemW32(hMenu, ID_EDIT_MASK					, bSourceFileExists);
-	VDEnableMenuItemW32(hMenu, ID_EDIT_UNMASK				, bSourceFileExists);
-	VDEnableMenuItemW32(hMenu, ID_EDIT_RESET				, bSourceFileExists);
+
 
 	VDEnableMenuItemW32(hMenu,ID_VIDEO_COPYSOURCEFRAME		, inputVideoAVI && inputVideoAVI->isFrameBufferValid());
 	VDEnableMenuItemW32(hMenu,ID_VIDEO_COPYOUTPUTFRAME		, inputVideoAVI && filters.isRunning());
@@ -1541,7 +1579,17 @@ void VDProjectUI::UIRunDubMessageLoop() {
 
 	VDSamplingAutoProfileScope autoProfileScope;
 
-	while (g_dubber->isRunning() && GetMessage(&msg, (HWND) NULL, 0, 0)) { 
+	while(g_dubber->isRunning()) {
+		BOOL result = GetMessage(&msg, (HWND) NULL, 0, 0);
+
+		if (result == (BOOL)-1)
+			break;
+
+		if (!result) {
+			PostQuitMessage(msg.wParam);
+			break;
+		}
+
 		if (guiCheckDialogs(&msg))
 			continue;
 
@@ -1567,15 +1615,17 @@ void VDProjectUI::UITimelineUpdated() {
 	mpPosition->SetSelection(start, end);
 }
 
-void VDProjectUI::UISelectionUpdated() {
+void VDProjectUI::UISelectionUpdated(bool notifyUser) {
 	VDPosition start(GetSelectionStartFrame());
 	VDPosition end(GetSelectionEndFrame());
 	mpPosition->SetSelection(start, end);
 
-	if (start < end)
-		guiSetStatus("Selecting frames %u-%u (%u frames)", 255, (unsigned)start, (unsigned)end, (unsigned)(end - start));
-	else
-		guiSetStatus("", 255);
+	if (notifyUser) {
+		if (start < end)
+			guiSetStatus("Selecting frames %u-%u (%u frames)", 255, (unsigned)start, (unsigned)end, (unsigned)(end - start));
+		else
+			guiSetStatus("", 255);
+	}
 }
 
 void VDProjectUI::UIShuttleModeUpdated() {

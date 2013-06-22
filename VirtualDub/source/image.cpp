@@ -22,6 +22,7 @@
 #include <vd2/system/vdalloc.h>
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmapops.h>
+#include <vd2/Kasumi/pixmaputils.h>
 #include <vd2/Meia/decode_png.h>
 #include "imagejpegdec.h"
 
@@ -35,8 +36,13 @@ void ConvertOldHeader(BITMAPINFOHEADER& newhdr, const BITMAPCOREHEADER& oldhdr) 
 	newhdr.biSizeImage		= ((newhdr.biWidth * newhdr.biBitCount + 31)>>5)*4 * abs(newhdr.biHeight);
 	newhdr.biXPelsPerMeter	= 0;
 	newhdr.biYPelsPerMeter	= 0;
-	newhdr.biClrUsed		= 0;		// wrong for paletted, but we don't support that anyway
-	newhdr.biClrImportant	= 0;
+
+	int palents = 0;
+	if (oldhdr.bcBitCount <= 8)
+		palents = 1 << oldhdr.bcBitCount;
+
+	newhdr.biClrUsed		= palents;
+	newhdr.biClrImportant	= palents;
 }
 
 bool DecodeBMPHeader(const void *pBuffer, long cbBuffer, int& w, int& h, bool& bHasAlpha) {
@@ -64,19 +70,38 @@ bool DecodeBMPHeader(const void *pBuffer, long cbBuffer, int& w, int& h, bool& b
 		pbih = &bihTemp;
 	}
 
-	if (pbih->biSize < sizeof(BITMAPINFOHEADER) || pbih->biPlanes > 1 || pbih->biCompression != BI_RGB || (pbih->biBitCount != 16 && pbih->biBitCount != 24 && pbih->biBitCount != 32))
-		throw MyError("Image file is in an unsupported format.");
+	do {
+		if (pbih->biSize < sizeof(BITMAPINFOHEADER) || pbih->biPlanes > 1 || pbih->biCompression != BI_RGB)
+			break;
 
-	// Verify that the image is all there.
+		int depthM1 = pbih->biBitCount - 1;
+		if (depthM1 & ~31)
+			break;
 
-	if (pbfh->bfOffBits + ((pbih->biWidth*pbih->biBitCount+31)>>5)*4*pbih->biHeight > cbBuffer)
-		throw MyError("Image file is too short.");
+		static const uint32 kValidMask
+				= (1 << ( 1 - 1))
+				| (1 << ( 2 - 1))
+				| (1 << ( 4 - 1))
+				| (1 << ( 8 - 1))
+				| (1 << (16 - 1))
+				| (1 << (24 - 1))
+				| (1 << (32 - 1));
 
-	w = pbih->biWidth;
-	h = pbih->biHeight;
-	bHasAlpha = false;
+		if (!(kValidMask & (1 << depthM1)))
+			break;
 
-	return true;
+		// Verify that the image is all there.
+		if (pbfh->bfOffBits + ((pbih->biWidth*pbih->biBitCount+31)>>5)*4*abs(pbih->biHeight) > cbBuffer)
+			throw MyError("Bitmap file is incomplete.");
+
+		w = pbih->biWidth;
+		h = pbih->biHeight;
+		bHasAlpha = false;
+
+		return true;
+	} while(0);
+
+	throw MyError("Bitmap file is in an unsupported format (not 1/2/4/8/16/24/32 bit).");
 }
 
 void DecodeBMP(const void *pBuffer, long cbBuffer, VBitmap& vb) {
@@ -94,8 +119,50 @@ void DecodeBMP(const void *pBuffer, long cbBuffer, VBitmap& vb) {
 		pbih = &bihTemp;
 	}
 
-	VBitmap src((char *)pBuffer + pbfh->bfOffBits, (BITMAPINFOHEADER *)pbih);
-	vb.BitBlt(0, 0, &src, 0, 0, -1, -1);
+	using namespace nsVDPixmap;
+
+	VDPixmap px;
+
+	px.data		= (char *)pBuffer + pbfh->bfOffBits;
+	px.data2	= NULL;
+	px.data3	= NULL;
+
+	px.pitch	= ((pbih->biWidth * pbih->biBitCount + 31) >> 5) * 4;
+	px.pitch2	= 0;
+	px.pitch3	= 0;
+
+	switch(pbih->biBitCount) {
+	case 1:		px.format = kPixFormat_Pal1; break;
+	case 2:		px.format = kPixFormat_Pal2; break;
+	case 4:		px.format = kPixFormat_Pal4; break;
+	case 8:		px.format = kPixFormat_Pal8; break;
+	case 16:	px.format = kPixFormat_XRGB1555; break;
+	case 24:	px.format = kPixFormat_RGB888; break;
+	case 32:	px.format = kPixFormat_XRGB8888; break;
+	}
+
+	px.w		= pbih->biWidth;
+
+	if (pbih->biHeight < 0) {
+		px.h = -pbih->biHeight;
+	} else {
+		px.h = pbih->biHeight;
+
+		VDPixmapFlipV(px);
+	}
+
+	uint32 pal[256];
+	px.palette = pal;
+
+	if (pbih->biBitCount <= 8) {
+		int palsize = pbih->biClrUsed;
+		if (!palsize)
+			palsize = 1<<pbih->biBitCount;
+
+		memcpy(pal, (char *)pbih + sizeof(BITMAPINFOHEADER), 4 * std::min<size_t>(palsize, 256));
+	}
+
+	VDVERIFY(VDPixmapBlt(VDAsPixmap(vb), px));
 }
 
 struct TGAHeader {

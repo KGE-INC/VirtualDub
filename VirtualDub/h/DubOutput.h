@@ -176,4 +176,24 @@ private:
 	std::vector<char>		mAudioFormat;
 };
 
+class VDAVIOutputNullVideoSystem : public IVDDubberOutputSystem {
+public:
+	VDAVIOutputNullVideoSystem();
+	~VDAVIOutputNullVideoSystem();
+
+	IVDMediaOutput *CreateSegment();
+	void CloseSegment(IVDMediaOutput *pSegment, bool bLast);
+	void SetVideo(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat);
+	void SetAudio(const AVIStreamHeader_fixed& asi, const void *pFormat, int cbFormat, bool bInterleaved);
+	bool AcceptsVideo();
+	bool AcceptsAudio();
+	bool IsRealTime() { return false; }
+
+private:
+	AVIStreamHeader_fixed	mVideoStreamInfo;
+	std::vector<char>		mVideoFormat;
+	AVIStreamHeader_fixed	mAudioStreamInfo;
+	std::vector<char>		mAudioFormat;
+};
+
 #endif

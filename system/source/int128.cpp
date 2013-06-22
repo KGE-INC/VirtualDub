@@ -157,11 +157,13 @@
 			mul		dword ptr [esp+24]		;EDX:EAX = BC
 			add		[ecx+4],eax
 			adc		[ecx+8],edx
+			adc		[ecx+12], 0
 
 			mov		eax,[esp+16]
 			mul		dword ptr [esp+20]		;EDX:EAX = AD
 			add		[ecx+4],eax
 			adc		[ecx+8],edx
+			adc		[ecx+12], 0
 
 			pop		ecx
 			ret

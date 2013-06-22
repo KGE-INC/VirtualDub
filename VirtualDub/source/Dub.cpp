@@ -98,7 +98,10 @@ namespace {
 		kVDM_ProcessingThreadLivelock,
 		kVDM_CodecDelayedDuringDelayedFlush,
 		kVDM_CodecLoopingDuringDelayedFlush,
-		kVDM_FastRecompressUsingFormat
+		kVDM_FastRecompressUsingFormat,
+		kVDM_SlowRecompressUsingFormat,
+		kVDM_FullUsingInputFormat,
+		kVDM_FullUsingOutputFormat
 	};
 
 	enum {
@@ -1042,6 +1045,10 @@ void Dubber::InitOutputFile() {
 
 			mVideoFilterOutput.resize(reqsize);
 			mVideoFilterOutputPixmap = VDPixmapFromLayout(layout, mVideoFilterOutput.data());
+
+			const char *s = VDPixmapGetInfo(mVideoFilterOutputPixmap.format).name;
+
+			VDLogAppMessage(kVDLogInfo, kVDST_Dub, kVDM_FullUsingOutputFormat, 1, &s);
 		}
 	}
 
@@ -1156,6 +1163,13 @@ void Dubber::InitSelectInputFormat() {
 	const BITMAPINFOHEADER& bih = *vSrc->getImageFormat();
 
 	if (opt->video.mode == DubVideoOptions::M_FASTREPACK && fUseVideoCompression) {
+		// Attempt source format.
+		if (NegotiateFastFormat(bih)) {
+			mpInputDisplay->Reset();
+			mbInputDisplayInitialized = true;
+			return;
+		}
+
 		// Don't use odd-width YUV formats.  They may technically be allowed, but
 		// a lot of codecs crash.  For instance, Huffyuv in "Convert to YUY2"
 		// mode will accept a 639x360 format for compression, but crashes trying
@@ -1184,13 +1198,6 @@ void Dubber::InitSelectInputFormat() {
 			}
 		}
 
-		// Attempt source format.
-		if (NegotiateFastFormat(bih)) {
-			mpInputDisplay->Reset();
-			mbInputDisplayInitialized = true;
-			return;
-		}
-
 		// Attempt RGB format negotiation.
 		int format = opt->video.mInputFormat;
 
@@ -1209,8 +1216,12 @@ void Dubber::InitSelectInputFormat() {
 	int format = opt->video.mInputFormat;
 
 	do {
-		if (vSrc->setTargetFormat(format))
+		if (vSrc->setTargetFormat(format)) {
+			const char *s = VDPixmapGetInfo(vSrc->getTargetFormat().format).name;
+
+			VDLogAppMessage(kVDLogInfo, kVDST_Dub, (opt->video.mode == DubVideoOptions::M_FULL) ? kVDM_FullUsingInputFormat : kVDM_SlowRecompressUsingFormat, 1, &s);
 			return;
+		}
 
 		format = DegradeFormat(format, opt->video.mInputFormat);
 	} while(format);
@@ -1583,13 +1594,17 @@ void Dubber::Stop() {
 
 	uint32 startTime = VDGetCurrentTick();
 
+	bool quitQueued = false;
+
 	while(nObjectsToWaitOn > 0) {
 		DWORD dwRes;
 
 		dwRes = MsgWaitForMultipleObjects(nObjectsToWaitOn, hObjects, FALSE, 10000, QS_ALLINPUT);
 
 		if (WAIT_OBJECT_0 + nObjectsToWaitOn == dwRes) {
-			guiDlgMessageLoop(hwndStatus);
+			if (!guiDlgMessageLoop(hwndStatus))
+				quitQueued = true;
+
 			continue;
 		}
 		
@@ -1620,6 +1635,8 @@ void Dubber::Stop() {
 		if (blitter) VDDEBUG("\t\tBlitter locks active: %08lx\n", blitter->lock_state);
 #endif
 	}
+	if (quitQueued)
+		PostQuitMessage(0);
 
 	if (!fError && mpIOThread)
 		fError = mpIOThread->GetError(err);

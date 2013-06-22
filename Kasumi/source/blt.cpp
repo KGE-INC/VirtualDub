@@ -43,7 +43,7 @@ void VDPixmapBltDirectPalettedConversion(const VDPixmap& dst, const VDPixmap& sr
 	VDPixmap srcpal = { (void *)src.palette, NULL, palsize, 1, 0, kPixFormat_XRGB8888 };
 	VDPixmap dstpal = { palbytes, NULL, palsize, 1, 0, dst.format };
 
-	VDPixmapBltDirect(dstpal, srcpal, palsize, 1);
+	VDVERIFY(VDPixmapBltDirect(dstpal, srcpal, palsize, 1));
 
 	pBlitter(dst.data, dst.pitch, src.data, src.pitch, w, h, palbytes);
 }

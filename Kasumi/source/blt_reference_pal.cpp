@@ -15,9 +15,10 @@ DECLARE_PALETTED(Pal1, Any8) {
 	uint8 *dst = (uint8 *)dst0;
 	const uint8 *pal = (const uint8 *)pal0;
 
-	dst += (w & ~7);
+	src += (w-1) >> 3;
+	dst += (w-1) & ~7;
 
-	srcpitch -= (w+7) >> 3;
+	srcpitch += (w+7) >> 3;
 	dstpitch += (w+7) & ~7;
 
 	do {
@@ -53,9 +54,10 @@ DECLARE_PALETTED(Pal1, Any16) {
 	uint16 *dst = (uint16 *)dst0;
 	const uint16 *pal = (const uint16 *)pal0;
 
-	dst += (w & ~7);
+	src += (w-1) >> 3;
+	dst += (w-1) & ~7;
 
-	srcpitch -= (w+7) >> 3;
+	srcpitch += (w+7) >> 3;
 	dstpitch += ((w+7) & ~7) * 2;
 
 	do {
@@ -91,9 +93,10 @@ DECLARE_PALETTED(Pal1, Any24) {
 	uint8 *dst = (uint8 *)dst0;
 	const uint8 *pal = (const uint8 *)pal0;
 
-	dst += (w & ~7) * 3;
+	src += (w-1) >> 3;
+	dst += ((w-1) & ~7) * 3;
 
-	srcpitch -= (w+7) >> 3;
+	srcpitch += (w+7) >> 3;
 	dstpitch += ((w+7) & ~7) * 3;
 
 	do {
@@ -115,7 +118,7 @@ DECLARE_PALETTED(Pal1, Any24) {
 		case 2:	pe = &pal[3*(v&1)]; dst[1*3+0] = pe[0]; dst[1*3+1] = pe[1]; dst[1*3+2] = pe[2]; v >>= 1;
 		case 1:	pe = &pal[3*(v&1)]; dst[0*3+0] = pe[0]; dst[0*3+1] = pe[1]; dst[0*3+2] = pe[2]; v >>= 1;
 
-				dst -= 8;
+				dst -= 24;
 				--src;
 			} while((wt -= 8) > 0);
 		}
@@ -130,9 +133,10 @@ DECLARE_PALETTED(Pal1, Any32) {
 	uint32 *dst = (uint32 *)dst0;
 	const uint32 *pal = (const uint32 *)pal0;
 
-	dst += (w & ~7);
+	src += (w-1) >> 3;
+	dst += (w-1) & ~7;
 
-	srcpitch -= (w+7) >> 3;
+	srcpitch += (w+7) >> 3;
 	dstpitch += ((w+7) & ~7) * 4;
 
 	do {
@@ -174,9 +178,10 @@ DECLARE_PALETTED(Pal2, Any8) {
 	uint8 *dst = (uint8 *)dst0;
 	const uint8 *pal = (const uint8 *)pal0;
 
-	dst += (w & ~3);
+	src += (w-1) >> 2;
+	dst += (w-1) & ~3;
 
-	srcpitch -= (w+3) >> 2;
+	srcpitch += (w+3) >> 2;
 	dstpitch += (w+3) & ~3;
 
 	do {
@@ -208,9 +213,10 @@ DECLARE_PALETTED(Pal2, Any16) {
 	uint16 *dst = (uint16 *)dst0;
 	const uint16 *pal = (const uint16 *)pal0;
 
-	dst += (w & ~3);
+	src += (w-1) >> 2;
+	dst += (w-1) & ~3;
 
-	srcpitch -= (w+3) >> 2;
+	srcpitch += (w+3) >> 2;
 	dstpitch += ((w+3) & ~3) * 2;
 
 	do {
@@ -242,9 +248,10 @@ DECLARE_PALETTED(Pal2, Any24) {
 	uint8 *dst = (uint8 *)dst0;
 	const uint8 *pal = (const uint8 *)pal0;
 
-	dst += (w & ~3) * 3;
+	src += (w-1) >> 2;
+	dst += ((w-1) & ~3) * 3;
 
-	srcpitch -= (w+3) >> 2;
+	srcpitch += (w+3) >> 2;
 	dstpitch += ((w+3) & ~3) * 3;
 
 	do {
@@ -262,7 +269,7 @@ DECLARE_PALETTED(Pal2, Any24) {
 		case 2:	pe = &pal[3*(v&3)]; dst[1*3+0] = pe[0]; dst[1*3+1] = pe[1]; dst[1*3+2] = pe[2]; v >>= 2;
 		case 1:	pe = &pal[3*(v&3)]; dst[0*3+0] = pe[0]; dst[0*3+1] = pe[1]; dst[0*3+2] = pe[2]; v >>= 2;
 
-				dst -= 4;
+				dst -= 12;
 				--src;
 			} while((wt -= 4) > 0);
 		}
@@ -277,9 +284,10 @@ DECLARE_PALETTED(Pal2, Any32) {
 	uint32 *dst = (uint32 *)dst0;
 	const uint32 *pal = (const uint32 *)pal0;
 
-	dst += (w & ~3);
+	src += (w-1) >> 2;
+	dst += (w-1) & ~3;
 
-	srcpitch -= (w+3) >> 2;
+	srcpitch += (w+3) >> 2;
 	dstpitch += ((w+3) & ~3) * 4;
 
 	do {
@@ -317,9 +325,10 @@ DECLARE_PALETTED(Pal4, Any8) {
 	uint8 *dst = (uint8 *)dst0;
 	const uint8 *pal = (const uint8 *)pal0;
 
-	dst += (w & ~1);
+	src += (w-1) >> 1;
+	dst += ((w-1) & ~1);
 
-	srcpitch -= (w+1) >> 1;
+	srcpitch += (w+1) >> 1;
 	dstpitch += (w+1) & ~1;
 
 	do {
@@ -349,9 +358,10 @@ DECLARE_PALETTED(Pal4, Any16) {
 	uint16 *dst = (uint16 *)dst0;
 	const uint16 *pal = (const uint16 *)pal0;
 
-	dst += (w & ~1);
+	src += (w-1) >> 1;
+	dst += ((w-1) & ~1);
 
-	srcpitch -= (w+1) >> 1;
+	srcpitch += (w+1) >> 1;
 	dstpitch += ((w+1) & ~1) * 2;
 
 	do {
@@ -381,9 +391,10 @@ DECLARE_PALETTED(Pal4, Any24) {
 	uint8 *dst = (uint8 *)dst0;
 	const uint8 *pal = (const uint8 *)pal0;
 
-	dst += (w & ~1) * 3;
+	src += (w-1) >> 1;
+	dst += ((w-1) & ~1) * 3;
 
-	srcpitch -= (w+1) >> 1;
+	srcpitch += (w+1) >> 1;
 	dstpitch += ((w+1) & ~1) * 3;
 
 	do {
@@ -399,7 +410,7 @@ DECLARE_PALETTED(Pal4, Any24) {
 		case 0:	pe = &pal[3*(v&15)]; dst[1*3+0] = pe[0]; dst[1*3+1] = pe[1]; dst[1*3+2] = pe[2]; v >>= 4;
 		case 1:	pe = &pal[3*(v&15)]; dst[0*3+0] = pe[0]; dst[0*3+1] = pe[1]; dst[0*3+2] = pe[2]; v >>= 4;
 
-				dst -= 2;
+				dst -= 6;
 				--src;
 			} while((wt -= 2) > 0);
 		}
@@ -414,9 +425,10 @@ DECLARE_PALETTED(Pal4, Any32) {
 	uint32 *dst = (uint32 *)dst0;
 	const uint32 *pal = (const uint32 *)pal0;
 
-	dst += (w & ~1);
+	src += (w-1) >> 1;
+	dst += ((w-1) & ~1);
 
-	srcpitch -= (w+1) >> 1;
+	srcpitch += (w+1) >> 1;
 	dstpitch += ((w+1) & ~1) * 4;
 
 	do {

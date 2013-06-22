@@ -54,7 +54,21 @@ namespace {
 	};
 
 	enum {
-		kVDM_ReopenChangesImminent			// The new video file has fewer video frames than the current file. Switching to it will result in changes to the edit list. Do you want to continue?
+		kVDM_ReopenChangesImminent,			// The new video file has fewer video frames than the current file. Switching to it will result in changes to the edit list. Do you want to continue?
+		kVDM_DeleteFrame,					// delete frame %lld (Undo/Redo)
+		kVDM_DeleteFrames,					// delete %lld frames at %lld (Undo/Redo)
+		kVDM_CutFrame,						// cut frame %lld (Undo/Redo)
+		kVDM_CutFrames,						// cut %lld frames at %lld (Undo/Redo)
+		kVDM_MaskFrame,						// mask frame %lld (Undo/Redo)
+		kVDM_MaskFrames,					// mask %lld frames at %lld (Undo/Redo)
+		kVDM_Paste,							// paste (Undo/Redo)
+		kVDM_ScanForErrors,					// scan for errors
+		kVDM_ResetTimeline					// reset timeline
+	};
+
+	enum {
+		kUndoLimit = 50,
+		kRedoLimit = 50
 	};
 }
 
@@ -173,6 +187,7 @@ protected:
 
 VDProject::VDProject()
 	: mhwnd(NULL)
+	, mpCB(NULL)
 	, mpSceneDetector(0)
 	, mSceneShuttleMode(0)
 	, mSceneShuttleAdvance(0)
@@ -232,9 +247,88 @@ void VDProject::Detach() {
 	mhwnd = NULL;
 }
 
+void VDProject::SetUICallback(IVDProjectUICallback *pCB) {
+	mpCB = pCB;
+}
+
+void VDProject::BeginTimelineUpdate(const wchar_t *undostr) {
+	if (!undostr)
+		ClearUndoStack();
+	else {
+		if (mUndoStack.size()+1 > kUndoLimit)
+			mUndoStack.pop_back();
+
+		mUndoStack.push_front(UndoEntry(mTimeline.GetSubset(), undostr, mposCurrentFrame, mposSelectionStart, mposSelectionEnd));
+	}
+
+	mRedoStack.clear();
+}
+
 void VDProject::EndTimelineUpdate() {
 	UpdateDubParameters();
-	UITimelineUpdated();
+	if (mpCB)
+		mpCB->UITimelineUpdated();
+}
+
+bool VDProject::Undo() {
+	if (mUndoStack.empty())
+		return false;
+
+	UndoEntry& ue = mUndoStack.front();
+
+	mTimeline.GetSubset().swap(ue.mSubset);
+
+	if (mRedoStack.size()+1 > kRedoLimit)
+		mRedoStack.pop_back();
+
+	mRedoStack.splice(mRedoStack.begin(), mUndoStack, mUndoStack.begin());
+
+	EndTimelineUpdate();
+	MoveToFrame(ue.mFrame);
+	SetSelection(mposSelectionStart, mposSelectionEnd, false);
+	return true;
+}
+
+bool VDProject::Redo() {
+	if (mRedoStack.empty())
+		return false;
+
+	UndoEntry& ue = mRedoStack.front();
+
+	mTimeline.GetSubset().swap(ue.mSubset);
+
+	if (mUndoStack.size()+1 > kUndoLimit)
+		mUndoStack.pop_back();
+
+	mUndoStack.splice(mUndoStack.begin(), mRedoStack, mRedoStack.begin());
+
+	EndTimelineUpdate();
+	MoveToFrame(ue.mFrame);
+	SetSelection(mposSelectionStart, mposSelectionEnd, false);
+	return true;
+}
+
+void VDProject::ClearUndoStack() {
+	mUndoStack.clear();
+	mRedoStack.clear();
+}
+
+const wchar_t *VDProject::GetCurrentUndoAction() {
+	if (mUndoStack.empty())
+		return NULL;
+
+	const UndoEntry& ue = mUndoStack.front();
+
+	return ue.mDescription.c_str();
+}
+
+const wchar_t *VDProject::GetCurrentRedoAction() {
+	if (mRedoStack.empty())
+		return NULL;
+
+	const UndoEntry& ue = mRedoStack.front();
+
+	return ue.mDescription.c_str();
 }
 
 bool VDProject::Tick() {
@@ -276,12 +370,13 @@ VDFraction VDProject::GetInputFrameRate() {
 	return mVideoInputFrameRate;
 }
 
-void VDProject::ClearSelection() {
+void VDProject::ClearSelection(bool notifyUser) {
 	mposSelectionStart = 0;
 	mposSelectionEnd = -1;
 	g_dubOpts.video.lStartOffsetMS = 0;
 	g_dubOpts.video.lEndOffsetMS = 0;
-	UISelectionUpdated();
+	if (mpCB)
+		mpCB->UISelectionUpdated(notifyUser);
 }
 
 bool VDProject::IsSelectionEmpty() {
@@ -306,7 +401,7 @@ bool VDProject::IsClipboardEmpty() {
 
 void VDProject::Cut() {
 	Copy();
-	Delete();
+	DeleteInternal(true, false);
 }
 
 void VDProject::Copy() {
@@ -317,26 +412,49 @@ void VDProject::Copy() {
 void VDProject::Paste() {
 	FrameSubset& s = mTimeline.GetSubset();
 
+	BeginTimelineUpdate(VDLoadString(0, kVDST_Project, kVDM_Paste));
+	DeleteInternal(false, true);
 	s.insert(mposCurrentFrame, mClipboard);
-	UITimelineUpdated();
-	ClearSelection();
+	EndTimelineUpdate();
 }
 
 void VDProject::Delete() {
+	DeleteInternal(false, false);
+}
+
+void VDProject::DeleteInternal(bool tagAsCut, bool noTag) {
 	VDPosition pos = GetCurrentFrame();
 	VDPosition start = GetSelectionStartFrame();
 	VDPosition end = GetSelectionEndFrame();
 
 	FrameSubset& s = mTimeline.GetSubset();
-	if (!IsSelectionEmpty())
-		s.deleteRange(start, end-start);
-	else {
+	VDPosition len = 1;
+
+	if (IsSelectionEmpty())
 		start = pos;
-		s.deleteRange(pos, 1);
+	else
+		len = end-start;
+
+	if (!noTag) {
+		if (tagAsCut) {
+			if (len > 1)
+				BeginTimelineUpdate(VDswprintf(VDLoadString(0, kVDST_Project, kVDM_CutFrames), 2, &start, &len).c_str());
+			else
+				BeginTimelineUpdate(VDswprintf(VDLoadString(0, kVDST_Project, kVDM_CutFrame), 1, &start).c_str());
+		} else {
+			if (len > 1)
+				BeginTimelineUpdate(VDswprintf(VDLoadString(0, kVDST_Project, kVDM_DeleteFrames), 2, &start, &len).c_str());
+			else
+				BeginTimelineUpdate(VDswprintf(VDLoadString(0, kVDST_Project, kVDM_DeleteFrame), 1, &start).c_str());
+		}
 	}
 
-	UITimelineUpdated();
-	ClearSelection();
+	s.deleteRange(start, len);
+
+	if (!noTag)
+		EndTimelineUpdate();
+
+	ClearSelection(false);
 	MoveToFrame(start);
 }
 
@@ -346,21 +464,31 @@ void VDProject::MaskSelection(bool bNewMode) {
 	VDPosition end = GetSelectionEndFrame();
 
 	FrameSubset& s = mTimeline.GetSubset();
-	if (!IsSelectionEmpty())
-		s.setRange(start, end-start, bNewMode);
-	else {
-		start = pos;
-		s.setRange(pos, 1, bNewMode);
-	}
+	VDPosition len = 1;
 
-	UITimelineUpdated();
-	ClearSelection();
-	MoveToFrame(start);
+	if (IsSelectionEmpty())
+		start = pos;
+	else
+		len = end-start;
+
+	if (len) {
+		if (len > 1)
+			BeginTimelineUpdate(VDswprintf(VDLoadString(0, kVDST_Project, kVDM_MaskFrames), 2, &start, &len).c_str());
+		else
+			BeginTimelineUpdate(VDswprintf(VDLoadString(0, kVDST_Project, kVDM_MaskFrame), 1, &start).c_str());
+
+		s.setRange(start, len, bNewMode);
+
+		EndTimelineUpdate();
+	}
 }
 
 void VDProject::DisplayFrame(bool bDispInput) {
 	VDPosition pos = mposCurrentFrame;
 	VDPosition original_pos = pos;
+
+	if (!mpCB)
+		return;
 
 	if (!g_dubOpts.video.fShowInputFrame && !g_dubOpts.video.fShowOutputFrame)
 		return;
@@ -379,9 +507,9 @@ void VDProject::DisplayFrame(bool bDispInput) {
 
 			if (pos >= inputVideoAVI->getEnd()) {
 				if (g_dubOpts.video.fShowInputFrame && bDispInput)
-					UIRefreshInputFrame(false);
+					mpCB->UIRefreshInputFrame(false);
 				if (bShowOutput)
-					UIRefreshOutputFrame(false);
+					mpCB->UIRefreshOutputFrame(false);
 			} else {
 				if (bShowOutput && !filters.isRunning())
 					CPUTest();
@@ -440,15 +568,15 @@ void VDProject::DisplayFrame(bool bDispInput) {
 }
 
 bool VDProject::UpdateFrame() {
-	if (mDesiredInputFrame < 0)
+	if (mDesiredInputFrame < 0 || !mpCB)
 		return false;
 
 	if (!inputVideoAVI) {
 		if (g_dubOpts.video.fShowInputFrame && mbUpdateInputFrame)
-			UIRefreshInputFrame(false);
+			mpCB->UIRefreshInputFrame(false);
 
 		if (mbUpdateOutputFrame)
-			UIRefreshOutputFrame(false);
+			mpCB->UIRefreshOutputFrame(false);
 
 		if (mbUpdateLong)
 			guiSetStatus("", 255);
@@ -512,12 +640,12 @@ bool VDProject::UpdateFrame() {
 					inputVideoAVI->streamGetFrame(NULL, 0, preroll, inputVideoAVI->displayToStreamOrder(mDesiredInputFrame));
 
 				if (g_dubOpts.video.fShowInputFrame && mbUpdateInputFrame)
-					UIRefreshInputFrame(true);
+					mpCB->UIRefreshInputFrame(true);
 
 				if (mbUpdateOutputFrame) {
 					RefilterFrame();
 
-					UIRefreshOutputFrame(true);
+					mpCB->UIRefreshOutputFrame(true);
 				}
 
 				if (mbUpdateLong)
@@ -660,13 +788,12 @@ void VDProject::Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver, 
 		mTimeline.SetVideoSource(inputVideoAVI);
 		mTimeline.SetFromSource();
 
-		ClearSelection();
-		g_dubOpts.video.lStartOffsetMS = g_dubOpts.video.lEndOffsetMS = 0;
-		UITimelineUpdated();
+		ClearSelection(false);
+		mpCB->UITimelineUpdated();
 		SetAudioSource();
 		UpdateDubParameters();
-		UISourceFileUpdated();
-		UIVideoSourceUpdated();
+		mpCB->UISourceFileUpdated();
+		mpCB->UIVideoSourceUpdated();
 		MoveToFrame(0);
 	} catch(const MyError&) {
 		Close();
@@ -757,20 +884,22 @@ void VDProject::Reopen() {
 
 	mTimeline.SetVideoSource(inputVideoAVI);
 
+	ClearUndoStack();
+
 	if (oldFrameCount > newFrameCount)
 		fs.trimInputRange(newFrameCount);
 	else if (oldFrameCount < newFrameCount)
 		fs.addRange(oldFrameCount, newFrameCount - oldFrameCount, false);
 
-	UITimelineUpdated();
+	mpCB->UITimelineUpdated();
 	SetAudioSource();
 	UpdateDubParameters();
-	UISourceFileUpdated();
-	UIVideoSourceUpdated();
+	mpCB->UISourceFileUpdated();
+	mpCB->UIVideoSourceUpdated();
 
 	if (newFrameCount < oldFrameCount) {
 		if (!IsSelectionEmpty() && mposSelectionEnd > newFrameCount)
-			SetSelectionEnd(newFrameCount);
+			SetSelectionEnd(newFrameCount, false);
 
 		if (mposCurrentFrame > newFrameCount)
 			MoveToFrame(newFrameCount);
@@ -899,6 +1028,14 @@ void VDProject::PreviewAll() {
 	PreviewAVI((HWND)mhwnd, NULL, g_prefs.main.iPreviewPriority);
 }
 
+void VDProject::RunNullVideoPass() {
+	if (!inputVideoAVI)
+		throw MyError("No input file to process.");
+
+	VDAVIOutputNullVideoSystem nullout;
+	g_project->RunOperation(&nullout, FALSE, NULL, 0, true);
+}
+
 void VDProject::CloseAVI() {
 	if (g_pInputOpts) {
 		delete g_pInputOpts;
@@ -916,12 +1053,16 @@ void VDProject::CloseAVI() {
 
 	filters.DeinitFilters();
 	filters.DeallocateBuffers();
+
+	ClearUndoStack();
 }
 
 void VDProject::Close() {
 	CloseAVI();
-	UIVideoSourceUpdated();
-	UISourceFileUpdated();
+	if (mpCB) {
+		mpCB->UIVideoSourceUpdated();
+		mpCB->UISourceFileUpdated();
+	}
 }
 
 void VDProject::StartServer() {
@@ -976,18 +1117,22 @@ void VDProject::SetSelectionStart() {
 		SetSelectionStart(GetCurrentFrame());
 }
 
-void VDProject::SetSelectionStart(VDPosition pos) {
+void VDProject::SetSelectionStart(VDPosition pos, bool notifyUser) {
 	if (inputAVI) {
 		if (pos < 0)
 			pos = 0;
 		if (pos > GetFrameCount())
 			pos = GetFrameCount();
 		mposSelectionStart = pos;
-		if (mposSelectionEnd < mposSelectionStart)
+		if (mposSelectionEnd < mposSelectionStart) {
 			mposSelectionEnd = mposSelectionStart;
+			g_dubOpts.video.lEndOffsetMS = (long)inputVideoAVI->samplesToMs(GetFrameCount() - pos);
+		}
+
 		g_dubOpts.video.lStartOffsetMS = (long)inputVideoAVI->samplesToMs(pos);
 
-		UISelectionUpdated();
+		if (mpCB)
+			mpCB->UISelectionUpdated(notifyUser);
 	}
 }
 
@@ -996,7 +1141,7 @@ void VDProject::SetSelectionEnd() {
 		SetSelectionEnd(GetCurrentFrame());
 }
 
-void VDProject::SetSelectionEnd(VDPosition pos) {
+void VDProject::SetSelectionEnd(VDPosition pos, bool notifyUser) {
 	if (inputAVI) {
 		if (pos < 0)
 			pos = 0;
@@ -1004,11 +1149,39 @@ void VDProject::SetSelectionEnd(VDPosition pos) {
 			pos = GetFrameCount();
 
 		mposSelectionEnd = pos;
-		if (mposSelectionStart > mposSelectionEnd)
+		if (mposSelectionStart > mposSelectionEnd) {
 			mposSelectionStart = mposSelectionEnd;
+			g_dubOpts.video.lStartOffsetMS = (long)inputVideoAVI->samplesToMs(pos);
+		}
 		g_dubOpts.video.lEndOffsetMS = (long)inputVideoAVI->samplesToMs(GetFrameCount() - pos);
 
-		UISelectionUpdated();
+		if (mpCB)
+			mpCB->UISelectionUpdated(notifyUser);
+	}
+}
+
+void VDProject::SetSelection(VDPosition start, VDPosition end, bool notifyUser) {
+	if (end < start)
+		ClearSelection(notifyUser);
+	else {
+		const VDPosition count = GetFrameCount();
+		if (start < 0)
+			start = 0;
+		if (start > count)
+			start = count;
+		if (end < 0)
+			end = 0;
+		if (end > count)
+			end = count;
+
+		mposSelectionStart = start;
+		mposSelectionEnd = end;
+
+		g_dubOpts.video.lStartOffsetMS = (long)inputVideoAVI->samplesToMs(start);
+		g_dubOpts.video.lEndOffsetMS = (long)inputVideoAVI->samplesToMs(GetFrameCount() - end);
+
+		if (mpCB)
+			mpCB->UISelectionUpdated(notifyUser);
 	}
 }
 
@@ -1017,7 +1190,8 @@ void VDProject::MoveToFrame(VDPosition frame) {
 		frame = std::max<VDPosition>(0, std::min<VDPosition>(frame, mTimeline.GetLength()));
 
 		mposCurrentFrame = frame;
-		UICurrentPositionUpdated();
+		if (mpCB)
+			mpCB->UICurrentPositionUpdated();
 		DisplayFrame();
 	}
 }
@@ -1106,14 +1280,16 @@ void VDProject::StartSceneShuttleReverse() {
 	if (!inputVideoAVI)
 		return;
 	mSceneShuttleMode = -1;
-	UIShuttleModeUpdated();
+	if (mpCB)
+		mpCB->UIShuttleModeUpdated();
 }
 
 void VDProject::StartSceneShuttleForward() {
 	if (!inputVideoAVI)
 		return;
 	mSceneShuttleMode = +1;
-	UIShuttleModeUpdated();
+	if (mpCB)
+		mpCB->UIShuttleModeUpdated();
 }
 
 void VDProject::MoveToPreviousRange() {
@@ -1176,14 +1352,15 @@ void VDProject::MoveToNextDrop() {
 
 void VDProject::ResetTimeline() {
 	if (inputAVI) {
+		BeginTimelineUpdate(VDLoadString(0, kVDST_Project, kVDM_ResetTimeline));
 		mTimeline.SetFromSource();
-		UITimelineUpdated();
+		EndTimelineUpdate();
 	}
 }
 
 void VDProject::ResetTimelineWithConfirmation() {
 	if (inputAVI) {
-		if (IDOK == MessageBox((HWND)mhwnd, "Discard edits and reset timeline?", g_szWarning, MB_OKCANCEL|MB_TASKMODAL|MB_SETFOREGROUND)) {
+		if (IDOK == MessageBox((HWND)mhwnd, "Discard edits and reset timeline?", g_szWarning, MB_OKCANCEL|MB_TASKMODAL|MB_SETFOREGROUND|MB_ICONEXCLAMATION)) {
 			ResetTimeline();
 		}
 	}
@@ -1191,7 +1368,9 @@ void VDProject::ResetTimelineWithConfirmation() {
 
 void VDProject::ScanForErrors() {
 	if (inputVideoAVI) {
+		BeginTimelineUpdate(VDLoadString(0, kVDST_Project, kVDM_ScanForErrors));
 		ScanForUnreadableFrames(&mTimeline.GetSubset(), inputVideoAVI);
+		EndTimelineUpdate();
 	}
 }
 
@@ -1250,7 +1429,8 @@ void VDProject::RunOperation(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOn
 
 		// As soon as we call Init(), this value is no longer ours to free.
 
-		UISetDubbingMode(true, pOutputSystem->IsRealTime());
+		if (mpCB)
+			mpCB->UISetDubbingMode(true, pOutputSystem->IsRealTime());
 
 		if (lSpillThreshold) {
 			g_dubber->EnableSpill((__int64)(lSpillThreshold-1) << 20, lSpillFrameThreshold);
@@ -1264,11 +1444,29 @@ void VDProject::RunOperation(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOn
 
 		_RPT0(0,"Starting dub.\n");
 
-		if (!pOptions) RedrawWindow((HWND)mhwnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
+		if (!pOptions && mhwnd) RedrawWindow((HWND)mhwnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
 
 		g_dubber->Go(iPriority);
 
-		UIRunDubMessageLoop();
+		if (mpCB)
+			mpCB->UIRunDubMessageLoop();
+		else {
+			MSG msg;
+			while(g_dubber->isRunning()) {
+				BOOL result = GetMessage(&msg, NULL, 0, 0);
+
+				if (result == (BOOL)-1)
+					break;
+
+				if (!result) {
+					PostQuitMessage(msg.wParam);
+					break;
+				}
+
+				TranslateMessage(&msg); 
+				DispatchMessage(&msg); 
+			}
+		}
 
 		g_dubber->Stop();
 
@@ -1307,7 +1505,8 @@ void VDProject::RunOperation(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOn
 			if (!inputVideoAVI->setDecompressedFormat(16))
 				inputVideoAVI->setDecompressedFormat(8);
 
-	UISetDubbingMode(false, false);
+	if (mpCB)
+		mpCB->UISetDubbingMode(false, false);
 
 	VDLog(kVDLogMarker, VDStringW(L"Ending operation."));
 
@@ -1330,7 +1529,8 @@ void VDProject::SceneShuttleStop() {
 		mSceneShuttleAdvance = 0;
 		mSceneShuttleCounter = 0;
 
-		UIShuttleModeUpdated();
+		if (mpCB)
+			mpCB->UIShuttleModeUpdated();
 
 		if (inputVideoAVI)
 			MoveToFrame(GetCurrentFrame());
@@ -1365,7 +1565,8 @@ void VDProject::SceneShuttleStep() {
 	while(UpdateFrame())
 		;
 
-	UICurrentPositionUpdated();
+	if (mpCB)
+		mpCB->UICurrentPositionUpdated();
 
 	VBitmap framebm((void *)inputVideoAVI->getFrameBuffer(), inputVideoAVI->getDecompressedFormat());
 	if (mpSceneDetector->Submit(&framebm)) {
@@ -1378,7 +1579,8 @@ void VDProject::StaticPositionCallback(VDPosition start, VDPosition cur, VDPosit
 	VDPosition frame = std::max<VDPosition>(0, std::min<VDPosition>(cur, pthis->GetFrameCount()));
 
 	pthis->mposCurrentFrame = frame;
-	pthis->UICurrentPositionUpdated();
+	if (pthis->mpCB)
+		pthis->mpCB->UICurrentPositionUpdated();
 }
 
 void VDProject::UpdateDubParameters() {
@@ -1402,5 +1604,6 @@ void VDProject::UpdateDubParameters() {
 		}
 	}
 
-	UIDubParametersUpdated();
+	if (mpCB)
+		mpCB->UIDubParametersUpdated();
 }

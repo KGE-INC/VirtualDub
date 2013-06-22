@@ -86,6 +86,7 @@ void AppendAVI(const wchar_t *pszFile) {
 		VDPosition lTail = inputAVI->videoSrc->getEnd();
 
 		if (inputAVI->Append(pszFile)) {
+			g_project->BeginTimelineUpdate();
 			FrameSubset& s = g_project->GetTimeline().GetSubset();
 
 			s.insert(s.end(), FrameSubsetNode(lTail, inputAVI->videoSrc->getEnd() - lTail, false));
@@ -151,6 +152,7 @@ void AppendAVIAutoscan(const wchar_t *pszFile) {
 
 	if (count) {
 		FrameSubset& s = g_project->GetTimeline().GetSubset();
+		g_project->BeginTimelineUpdate();
 		s.insert(s.end(), FrameSubsetNode(originalCount, inputAVI->videoSrc->getEnd() - originalCount, false));
 		g_project->EndTimelineUpdate();
 	}
@@ -159,6 +161,9 @@ void AppendAVIAutoscan(const wchar_t *pszFile) {
 void SaveWAV(const wchar_t *szFilename, bool fProp, DubOptions *quick_opts) {
 	if (!inputVideoAVI)
 		throw MyError("No input file to process.");
+
+	if (!inputAudio)
+		throw MyError("No audio stream to process.");
 
 	VDAVIOutputWAVSystem wavout(szFilename);
 	g_project->RunOperation(&wavout, TRUE, quick_opts, 0, fProp);

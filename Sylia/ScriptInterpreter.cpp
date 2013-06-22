@@ -389,7 +389,6 @@ void VDScriptInterpreter::ParseExpression() {
 
 				for(;;) {
 					ParseExpression();
-					ConvertToRvalue();
 					++pcount;
 					
 					t = Token();
@@ -542,6 +541,14 @@ void VDScriptInterpreter::InvokeMethod(const VDScriptFunctionDef *sfd, int pcoun
 	if (pcount)
 		params = &mStack[mStack.size() - pcount];
 
+	// convert params to rvalues
+	for(int j=0; j<pcount; ++j) {
+		VDScriptValue& parm = params[j];
+
+		if (parm.isVarLV())
+			parm = parm.asVarLV()->v;
+	}
+
 	mpCurrentInvocationMethod = sfd;
 	mMethodArgumentCount = pcount;
 
@@ -570,7 +577,11 @@ void VDScriptInterpreter::InvokeMethod(const VDScriptFunctionDef *sfd, int pcoun
 			case 'v':
 				break;
 			case 'i':
+				if (!csv->isInt()) goto arglist_nomatch;
+				break;
 			case 'l':
+				if (!csv->isInt() && !csv->isLong()) goto arglist_nomatch;
+				break;
 			case 'd':
 				if (!csv->isInt() && !csv->isLong() && !csv->isDouble()) goto arglist_nomatch;
 				break;

@@ -220,6 +220,26 @@ VDPixmapBuffer::VDPixmapBuffer(const VDPixmap& src)
 	assign(src);
 }
 
+VDPixmapBuffer::~VDPixmapBuffer() {
+#ifdef _DEBUG
+	if (mpBuffer) {
+		char *p = (char *)(((uintptr)mpBuffer + 15) & ~(uintptr)15);
+
+		// verify head bytes
+		for(int i=0; i<12; ++i)
+			if (p[i+4] != (char)(0xa0 + i))
+				VDASSERT(!"VDPixmapBuffer: Buffer underflow detected.\n");
+
+		// verify tail bytes
+		for(int j=0; j<12; ++j)
+			if (p[mLinearSize - 12 + j] != (char)(0xb0 + j))
+				VDASSERT(!"VDPixmapBuffer: Buffer overflow detected.\n");
+	}
+#endif
+
+	delete[] mpBuffer;
+}
+
 void VDPixmapBuffer::init(sint32 width, sint32 height, int f) {
 	const VDPixmapFormatInfo& srcinfo = VDPixmapGetInfo(f);
 	sint32		qw			= -(-width >> srcinfo.qwbits);
@@ -232,13 +252,25 @@ void VDPixmapBuffer::init(sint32 width, sint32 height, int f) {
 	size_t		subsize		= subpitch * subh;
 	size_t		totalsize	= mainsize + subsize*srcinfo.auxbufs + 4 * srcinfo.palsize;
 
+#ifdef _DEBUG
+	totalsize += 28;
+#endif
+
 	if (mLinearSize != totalsize) {
 		clear();
 		mpBuffer = new char[totalsize + 15];
 		mLinearSize = totalsize;
 	}
 
-	char *p = mpBuffer + (-(int)mpBuffer & 15);
+	char *p = mpBuffer + (-(int)(uintptr)mpBuffer & 15);
+
+#ifdef _DEBUG
+	*(uint32 *)p = totalsize;
+	for(int i=0; i<12; ++i)
+		p[4+i] = (char)(0xa0 + i);
+
+	p += 16;
+#endif
 
 	data	= p;
 	pitch	= mainpitch;
@@ -265,8 +297,15 @@ void VDPixmapBuffer::init(sint32 width, sint32 height, int f) {
 		p += subsize;
 	}
 
-	if (srcinfo.palsize)
+	if (srcinfo.palsize) {
 		palette = (const uint32 *)p;
+		p += srcinfo.palsize * 4;
+	}
+
+#ifdef _DEBUG
+	for(int j=0; j<12; ++j)
+		p[j] = (char)(0xb0 + j);
+#endif
 }
 
 void VDPixmapBuffer::assign(const VDPixmap& src) {

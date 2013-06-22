@@ -146,7 +146,7 @@ void *VDUIComboBoxW32::AsInterface(uint32 id) {
 }
 
 bool VDUIComboBoxW32::Create(IVDUIParameters *pParameters) {
-	if (!CreateW32(pParameters, "COMBOBOX", CBS_DROPDOWNLIST|WS_TABSTOP))
+	if (!CreateW32(pParameters, "COMBOBOX", CBS_DROPDOWNLIST|WS_TABSTOP|WS_VSCROLL))
 		return false;
 
 	RECT r;

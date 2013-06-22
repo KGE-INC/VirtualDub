@@ -62,6 +62,35 @@
 #include "projectui.h"
 #include "captureui.h"
 
+#ifdef _DEBUG
+	#define VD_GENERIC_BUILD_NAMEW	L"debug"
+	#define VD_BUILD_NAMEW			L"debug"
+#else
+	#define VD_GENERIC_BUILD_NAMEW	L"release"
+
+	#if defined(_M_AMD64)
+		#define VD_BUILD_NAMEW		L"release-AMD64"
+	#elif defined(__INTEL_COMPILER)
+		#define VD_BUILD_NAMEW		L"release-P4"
+	#else
+		#define VD_BUILD_NAMEW		L"release"
+	#endif
+#endif
+
+#if defined(_M_AMD64)
+	#define VD_COMPILE_TARGETW		L"AMD64"
+	#define VD_EXEFILE_NAMEA		"Veedub64.exe"
+	#define VD_CLIEXE_NAMEA			"vdub64.exe"
+#elif defined(__INTEL_COMPILER)
+	#define VD_COMPILE_TARGETW		L"Pentium 4"
+	#define VD_EXEFILE_NAMEA		"VeedubP4.exe"
+	#define VD_CLIEXE_NAMEA			"vdubp4.exe"
+#else
+	#define VD_COMPILE_TARGETW		L"80x86"
+	#define VD_EXEFILE_NAMEA		"VirtualDub.exe"
+	#define VD_CLIEXE_NAMEA			"vdub.exe"
+#endif
+
 ///////////////////////////////////////////////////////////////////////////
 
 extern void InitBuiltinFilters();
@@ -316,16 +345,11 @@ bool Init(HINSTANCE hInstance, int nCmdShow) {
 
 	// announce startup
 	VDLog(kVDLogInfo, VDswprintf(
-			L"Starting up: VirtualDub build %lu/"
-#ifdef DEBUG
-			L"debug"
-#elif defined(_M_AMD64)
-			L"release-AMD64"
-#elif defined(__INTEL_COMPILER)
-			L"release-P4"
-#else
-			L"release"
-#endif
+			L"VirtualDub CLI Video Processor Version 1.6.5 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
+			,1
+			,&version_num));
+	VDLog(kVDLogInfo, VDswprintf(
+			L"Copyright (C) Avery Lee 1998-2005. Licensed under GNU General Public License\n"
 			,1
 			,&version_num));
 
@@ -567,6 +591,56 @@ bool InitInstance( HANDLE hInstance, int nCmdShow) {
 
 ///////////////////////////////////////////////////////////////////////////
 
+
+class VDConsoleLogger : public IVDLogger {
+public:
+	void AddLogEntry(int severity, const VDStringW& s);
+	void Write(const wchar_t *s, size_t len);
+} g_VDConsoleLogger;
+
+void VDConsoleLogger::AddLogEntry(int severity, const VDStringW& s) {
+	const size_t len = s.length();
+	const wchar_t *text = s.data();
+	const wchar_t *end = text + len;
+
+	// Don't annotate lines in this routine. We print some 'errors' in
+	// the cmdline handling that aren't really errors, and would have
+	// to be revisited.
+	for(;;) {
+		const wchar_t *t = text;
+
+		while(t != end && *t != '\n')
+			++t;
+
+		Write(text, t-text);
+		if (t == end)
+			break;
+
+		text = t+1;
+	}
+}
+
+void VDConsoleLogger::Write(const wchar_t *text, size_t len) {
+	DWORD actual;
+
+	if (!len) {
+		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), "\r\n", 2, &actual, NULL);
+	}
+
+	int mblen = WideCharToMultiByte(CP_ACP, 0, text, len, NULL, 0, NULL, NULL);
+
+	char *buf = (char *)alloca(mblen + 2);
+
+	mblen = WideCharToMultiByte(CP_ACP, 0, text, len, buf, mblen, NULL, NULL);
+
+	if (mblen) {
+		buf[mblen] = '\r';
+		buf[mblen+1] = '\n';
+
+		WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, mblen+2, &actual, NULL);
+	}
+}
+
 namespace {
 	bool ParseArgument(const wchar_t *&s, VDStringW& parm) {
 		while(iswspace(*s))
@@ -654,6 +728,11 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 	VDStringW progName;
 	ParseArgument(s, token);
 
+	bool consoleMode = false;
+	int argsFound = 0;
+	int rc = -1;
+
+	JobLockDubber();
 	try {
 		while(*s) {
 			while(iswspace(*s))
@@ -661,8 +740,31 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 
 			if (!*s) break;
 
+			++argsFound;
+
 			if (*s == L'/') {
 				++s;
+
+				if (*s == L'?')
+					throw MyError(
+						"Command-line flags:\n"
+						"\n"
+						"  /b <src-dir> <dst-dir>    Add batch entries for a directory\n"
+						"  /c                        Clear job list\n"
+						"  /capture                  Switch to capture mode\n"
+						"  /capchannel <ch>          Set capture channel\n"
+						"  /capdevice <devname>      Set capture device\n"
+						"  /capfile <filename>       Set capture filename\n"
+						"  /capstart [<timelimit>]   Capture (w/opt timelimit in minutes)\n"
+						"  /F <filter>               Load filter\n"
+						"  /h                        Disable exception filter\n"
+						"  /i <script> [<args...>]   Invoke script with arguments\n"
+						"  /p <src> <dst>            Add a batch entry for a file\n"
+						"  /queryVersion             Return build number\n"
+						"  /r                        Run job queue\n"
+						"  /s <script>               Run a script\n"
+						"  /x                        Exit when complete\n"
+						);
 
 				// parse out the switch name
 				const wchar_t *switchStart = s;
@@ -675,7 +777,7 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 					VDStringW path2;
 
 					if (!ParseArgument(s, token) || !ParseArgument(s, path2))
-						throw "Command line error: syntax is /b <src_dir> <dst_dir>";
+						throw MyError("Command line error: syntax is /b <src_dir> <dst_dir>");
 
 					JobAddBatchDirectory(token.c_str(), path2.c_str());
 				}
@@ -688,34 +790,34 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 				}
 				else if (token == L"capchannel") {
 					if (!g_capProjectUI)
-						throw "Command line error: not in capture mode";
+						throw MyError("Command line error: not in capture mode");
 
 					if (!ParseArgument(s, token))
-						throw "Command line error: syntax is /capchannel <channel>";
+						throw MyError("Command line error: syntax is /capchannel <channel>");
 
 					g_capProjectUI->SetTunerChannel(_wtoi(token.c_str()));
 				}
 				else if (token == L"capdevice") {
 					if (!g_capProjectUI)
-						throw "Command line error: not in capture mode";
+						throw MyError("Command line error: not in capture mode");
 
 					if (!ParseArgument(s, token))
-						throw "Command line error: syntax is /capdevice <device>";
+						throw MyError("Command line error: syntax is /capdevice <device>");
 
 					g_capProjectUI->SetDriver(token.c_str());
 				}
 				else if (token == L"capfile") {
 					if (!g_capProjectUI)
-						throw "Command line error: not in capture mode";
+						throw MyError("Command line error: not in capture mode");
 
 					if (!ParseArgument(s, token))
-						throw "Command line error: syntax is /capfile <filename>";
+						throw MyError("Command line error: syntax is /capfile <filename>");
 
 					g_capProjectUI->SetCaptureFile(token.c_str());
 				}
 				else if (token == L"capstart") {
 					if (!g_capProjectUI)
-						throw "Command line error: not in capture mode";
+						throw MyError("Command line error: not in capture mode");
 
 					if (ParseArgument(s, token)) {
 						int limit = 60*_wtoi(token.c_str());
@@ -725,17 +827,22 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 
 					g_capProjectUI->Capture();
 				}
+				else if (token == L"console") {
+					consoleMode = true;
+					VDAttachLogger(&g_VDConsoleLogger, false, true);
+					// don't count the /console flag as an argument that does work
+					--argsFound;
+				}
 				else if (token == L"fsck") {
 					crash();
 				}
 				else if (token == L"F") {
 					if (!ParseArgument(s, token))
-						throw "Command line error: syntax is /F <filter>";
+						throw MyError("Command line error: syntax is /F <filter>");
 
 					VDAddPluginModule(token.c_str());
 
 					guiSetStatus("Loaded external filter module: %s", 255, VDTextWToA(token).c_str());
-					break;
 				}
 				else if (token == L"h") {
 					SetUnhandledExceptionFilter(NULL);
@@ -744,37 +851,36 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 					VDStringW filename;
 
 					if (!ParseArgument(s, filename))
-						throw "Command line error: syntax is /i <script> [<args>...]";
+						throw MyError("Command line error: syntax is /i <script> [<args>...]");
 
 					g_VDStartupArguments.clear();
 					while(ParseArgument(s, token))
 						g_VDStartupArguments.push_back(VDTextWToA(token));
 
-					JobLockDubber();
 					RunScript(filename.c_str());
-					JobUnlockDubber();
 				}
 				else if (token == L"p") {
 					VDStringW path2;
 
 					if (!ParseArgument(s, token) || !ParseArgument(s, path2))
-						throw "Command line error: syntax is /p <src_file> <dst_file>";
+						throw MyError("Command line error: syntax is /p <src_file> <dst_file>");
 
 					JobAddBatchFile(token.c_str(), path2.c_str());
 				}
 				else if (token == L"queryVersion") {
-					return version_num;
+					rc = version_num;
+					break;
 				}
 				else if (token == L"r") {
+					JobUnlockDubber();
 					JobRunList();
+					JobLockDubber();
 				}
 				else if (token == L"s") {
 					if (!ParseArgument(s, token))
-						throw "Command line error: syntax is /s <script>";
+						throw MyError("Command line error: syntax is /s <script>");
 
-					JobLockDubber();
 					RunScript(token.c_str());
-					JobUnlockDubber();
 				}
 				else if (token == L"vtprofile") {
 					g_bEnableVTuneProfiling = true;
@@ -784,8 +890,11 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 				}
 				else if (token == L"x") {
 					fExitOnDone = true;
+
+					// don't count the /x flag as an argument that does work
+					--argsFound;
 				} else
-					throw "???";
+					throw MyError("Command line error: unknown switch /%ls", token.c_str());
 
 				// Toss remaining garbage.
 				while(*s && *s != L' ' && *s != '/' && *s != '-')
@@ -798,11 +907,30 @@ int VDProcessCommandLine(const wchar_t *lpCmdLine) {
 					++s;
 			}
 		}
-	} catch(const char *s) {
-		MessageBox(NULL, s, g_szError, MB_OK);
+
+		if (!argsFound && consoleMode)
+			throw MyError(
+				"This application allows usage of VirtualDub from the command line. To use\n"
+				"the program interactively, launch "VD_EXEFILE_NAMEA" directly.\n"
+				"\n"
+				"Usage: "VD_CLIEXE_NAMEA" ( /<switches> | video-file ) ...\n"
+				"       "VD_CLIEXE_NAMEA" /? for help\n");
+
 	} catch(const MyError& e) {
-		e.post(g_hWnd, g_szError);
+		if (consoleMode) {
+			const char *err = e.gets();
+
+			if (err)
+				VDLog(kVDLogError, VDTextAToW(err));
+
+			rc = 5;
+		} else
+			e.post(g_hWnd, g_szError);
 	}
+	JobUnlockDubber();
+
+	if (rc >= 0)
+		return rc;
 
 	if (fExitOnDone)
 		return 0;

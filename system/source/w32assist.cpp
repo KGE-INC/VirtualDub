@@ -28,7 +28,14 @@
 #include <vd2/system/vdstl.h>
 
 int VDGetSizeOfBitmapHeaderW32(const BITMAPINFOHEADER *pHdr) {
-	int size = pHdr->biSize + pHdr->biClrUsed * sizeof(RGBQUAD);
+	int palents = 0;
+
+	if (pHdr->biCompression == BI_RGB && pHdr->biBitCount <= 8) {
+		palents = pHdr->biClrUsed;
+		if (!palents)
+			palents = 1 << pHdr->biBitCount;
+	}
+	int size = pHdr->biSize + palents * sizeof(RGBQUAD);
 
 	if (pHdr->biSize < sizeof(BITMAPV4HEADER) && pHdr->biCompression == BI_BITFIELDS)
 		size += sizeof(DWORD) * 3;
@@ -99,6 +106,29 @@ void VDCheckMenuItemByCommandW32(HMENU hmenu, UINT cmd, bool checked) {
 
 void VDEnableMenuItemByCommandW32(HMENU hmenu, UINT cmd, bool checked) {
 	EnableMenuItem(hmenu, cmd, checked ? MF_BYCOMMAND|MF_ENABLED : MF_BYCOMMAND|MF_GRAYED);
+}
+
+void VDSetMenuItemTextByCommandW32(HMENU hmenu, UINT cmd, const wchar_t *text) {
+	if (VDIsWindowsNT()) {
+		MENUITEMINFOW mmiW;
+
+		mmiW.cbSize		= MENUITEMINFO_SIZE_VERSION_400W;
+		mmiW.fMask		= MIIM_TYPE;
+		mmiW.fType		= MFT_STRING;
+		mmiW.dwTypeData	= (LPWSTR)text;
+
+		SetMenuItemInfoW(hmenu, cmd, FALSE, &mmiW);
+	} else {
+		MENUITEMINFOA mmiA;
+		VDStringA textA(VDTextWToA(text));
+
+		mmiA.cbSize		= MENUITEMINFO_SIZE_VERSION_400A;
+		mmiA.fMask		= MIIM_TYPE;
+		mmiA.fType		= MFT_STRING;
+		mmiA.dwTypeData	= (LPSTR)textA.c_str();
+
+		SetMenuItemInfoA(hmenu, cmd, FALSE, &mmiA);
+	}
 }
 
 LRESULT	VDDualCallWindowProcW32(WNDPROC wp, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {

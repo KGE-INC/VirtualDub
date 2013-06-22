@@ -91,6 +91,7 @@ bool InputFile::isStreaming() {
 ///////////////////////////////////////////////////////////////////////////
 
 tVDInputDrivers g_VDInputDrivers;
+tVDInputDrivers g_VDInputDriversByLegacyIndex;
 
 extern IVDInputDriver *VDCreateInputDriverAVI1();
 extern IVDInputDriver *VDCreateInputDriverAVI2();
@@ -109,14 +110,16 @@ namespace {
 
 void VDInitInputDrivers() {
 
-	g_VDInputDrivers.reserve(5);
+	g_VDInputDriversByLegacyIndex.reserve(5);
 
-	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverAVI1()));
-	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverAVI2()));
-	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverMPEG()));
-	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverImages()));
-	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverASF()));
-	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverANIM()));
+	g_VDInputDriversByLegacyIndex.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverAVI1()));
+	g_VDInputDriversByLegacyIndex.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverAVI2()));
+	g_VDInputDriversByLegacyIndex.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverMPEG()));
+	g_VDInputDriversByLegacyIndex.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverImages()));
+	g_VDInputDriversByLegacyIndex.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverASF()));
+	g_VDInputDriversByLegacyIndex.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverANIM()));
+
+	g_VDInputDrivers = g_VDInputDriversByLegacyIndex;
 
 	std::sort(g_VDInputDrivers.begin(), g_VDInputDrivers.end(), SortByRevPriority());
 }
@@ -153,11 +156,11 @@ IVDInputDriver *VDGetInputDriverForLegacyIndex(int idx) {
 	};
 
 	switch(idx) {
-	case FILETYPE_AVICOMPAT:	return g_VDInputDrivers[0];
-	case FILETYPE_AVI:			return g_VDInputDrivers[1];
-	case FILETYPE_MPEG:			return g_VDInputDrivers[2];
-	case FILETYPE_IMAGE:		return g_VDInputDrivers[3];
-	case FILETYPE_ASF:			return g_VDInputDrivers[4];
+	case FILETYPE_AVICOMPAT:	return g_VDInputDriversByLegacyIndex[0];
+	case FILETYPE_AVI:			return g_VDInputDriversByLegacyIndex[1];
+	case FILETYPE_MPEG:			return g_VDInputDriversByLegacyIndex[2];
+	case FILETYPE_IMAGE:		return g_VDInputDriversByLegacyIndex[3];
+	case FILETYPE_ASF:			return g_VDInputDriversByLegacyIndex[4];
 	}
 
 	return NULL;

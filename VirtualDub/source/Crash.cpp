@@ -56,6 +56,7 @@
 // DO NOT USE stdio.h!  printf() calls malloc()!
 //#include <stdio.h>
 #include <stdarg.h>
+#include <malloc.h>		// for alloca()
 
 #include <windows.h>
 #ifndef _M_AMD64
@@ -1204,25 +1205,27 @@ static void VDDebugCrashDumpRegisters(VDDebugCrashTextOutput& out, const EXCEPTI
 	out.WriteF("ECX = %08lx\n", pContext->Ecx);
 	out.WriteF("EDX = %08lx\n", pContext->Edx);
 	out.WriteF("EBP = %08lx\n", pContext->Ebp);
-	out.WriteF("DS:ESI = %04x:%08lx\n", pContext->SegDs, pContext->Esi);
-	out.WriteF("ES:EDI = %04x:%08lx\n", pContext->SegEs, pContext->Edi);
-	out.WriteF("SS:ESP = %04x:%08lx\n", pContext->SegSs, pContext->Esp);
-	out.WriteF("CS:EIP = %04x:%08lx\n", pContext->SegCs, pContext->Eip);
-	out.WriteF("FS = %04x\n", pContext->SegFs);
-	out.WriteF("GS = %04x\n", pContext->SegGs);
+	out.WriteF("ESI = %08lx\n", pContext->Esi);
+	out.WriteF("EDI = %08lx\n", pContext->Edi);
+	out.WriteF("ESP = %08lx\n", pContext->Esp);
+	out.WriteF("EIP = %08lx\n", pContext->Eip);
 	out.WriteF("EFLAGS = %08lx\n", pContext->EFlags);
 	out.WriteF("FPUCW = %04x\n", pContext->FloatSave.ControlWord);
 	out.WriteF("FPUTW = %04x\n", pContext->FloatSave.TagWord);
-	out.Write("\n");
+		
+#if 0
 	// extract out MMX registers
 
 	int tos = (pContext->FloatSave.StatusWord & 0x3800)>>11;
 
+	out.Write("\n");
 	for(int i=0; i<8; i++) {
 		long *pReg = (long *)(pContext->FloatSave.RegisterArea + 10*((i-tos) & 7));
 
 		out.WriteF("MM%c = %08lx%08lx\n", i+'0', pReg[1], pReg[0]);
 	}
+#endif
+
 #elif defined(_M_AMD64)
 	out.WriteF("RAX = %16I64x\n", pContext->Rax);
 	out.WriteF("RBX = %16I64x\n", pContext->Rbx);
@@ -1270,6 +1273,72 @@ static void VDDebugCrashDumpBombReason(VDDebugCrashTextOutput& out, const EXCEPT
 	}
 }
 
+static void VDDebugCrashDumpMemoryRegion(VDDebugCrashTextOutput& out, uintptr base, const char *name, int dwords) {
+	HANDLE hProcess = GetCurrentProcess();
+	uint32 *savemem = (uint32 *)alloca(4 * dwords);
+
+	base &= ~4;
+
+	// eliminate easy ones
+	SYSTEM_INFO sysInfo;
+	GetSystemInfo(&sysInfo);
+
+	if (base < (uintptr)sysInfo.lpMinimumApplicationAddress || base > (uintptr)sysInfo.lpMaximumApplicationAddress)
+		return;
+
+	int count = 0;
+	while(count < dwords) {
+		SIZE_T actual;
+		if (!ReadProcessMemory(hProcess, (LPCVOID)(base + 4*count), savemem+count, 4, &actual))
+			break;
+
+		++count;
+	}
+
+	for(int i=0; i<count; i+=8) {
+		out.WriteF("%-4s  "PTR_08lx":", name, base + 4*i);
+		for(int j=0; j<8 && i+j < count; ++j)
+			out.WriteF(" %08x", savemem[i+j]);
+		out.Write("\n");
+
+		name = "";
+	}
+}
+static void VDDebugCrashDumpPointers(VDDebugCrashTextOutput& out, const EXCEPTION_POINTERS *pExc) {
+	const CONTEXT *const pContext = (const CONTEXT *)pExc->ContextRecord;
+
+#ifdef _M_IX86
+	VDDebugCrashDumpMemoryRegion(out, pContext->Eax, "EAX", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->Ebx, "EBX", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->Ecx, "ECX", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->Edx, "EDX", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->Ecx, "ESI", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->Edx, "EDI", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->Esp, "ESP", 32);
+	VDDebugCrashDumpMemoryRegion(out, pContext->Ebp, "EBP", 32);
+#elif defined(_M_AMD64)
+	VDDebugCrashDumpMemoryRegion(out, pContext->Rax, "RAX", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->Rbx, "RBX", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->Rcx, "RCX", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->Rdx, "RDX", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->Rsi, "RSI", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->Rdi, "RDI", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->Rsp, "RSP", 32);
+	VDDebugCrashDumpMemoryRegion(out, pContext->Rbp, "RBP", 32);
+	VDDebugCrashDumpMemoryRegion(out, pContext->R8, "R8", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->R9, "R9", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->R10, "R10", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->R11, "R11", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->R12, "R12", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->R13, "R13", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->R14, "R14", 8);
+	VDDebugCrashDumpMemoryRegion(out, pContext->R15, "R15", 8);
+#else
+	#error Need platform-specific register dump
+#endif
+}
+
+#if 0
 static void VDDebugCrashDumpThreadStacks(VDDebugCrashTextOutput& out) {
 	EnterCriticalSection(&g_csPerThreadState);
 
@@ -1291,6 +1360,7 @@ static void VDDebugCrashDumpThreadStacks(VDDebugCrashTextOutput& out) {
 
 	LeaveCriticalSection(&g_csPerThreadState);
 }
+#endif
 
 static const char *GetNameFromHeap(const char *heap, int idx) {
 	while(idx--)
@@ -1536,15 +1606,17 @@ static void VDDebugCrashDumpCallStack(VDDebugCrashTextOutput& out, HANDLE hThrea
 	NT_TIB *pTib = VDGetThreadTibW32(hThread, pContext);
 
 #ifdef _M_AMD64
-	uintptr ip = pContext->Rsp;
+	uintptr ip = pContext->Rip;
+	uintptr sp = pContext->Rsp;
 #else
-	uintptr ip = pContext->Esp;
+	uintptr ip = pContext->Eip;
+	uintptr sp = pContext->Esp;
 #endif
 
 	char *pStackBase = (char *)pTib->StackBase;
 
 	uintptr data = ip;
-	char *lpAddr = (char *)ip;
+	char *lpAddr = (char *)sp;
 
 	// Walk up the stack.  Hopefully it wasn't fscked.
 	do {
@@ -1668,11 +1740,11 @@ static bool DoSave(const char *pszFilename, HANDLE hThread, const EXCEPTION_POIN
 
 	out.Write(pszScopeInfo);
 
-	out.Write("\n\nThread traces:\n\n");
+	out.Write("\n\nPointer dumps:\n\n");
 
-	VDDebugCrashDumpThreadStacks(out);
+	VDDebugCrashDumpPointers(out, pExc);
 
-	out.Write("\nThread call stack:");
+	out.Write("\nThread call stack:\n");
 
 	VDDebugCrashDumpCallStack(out, hThread, pExc, g_pcdw->vdc.pExtraData);
 

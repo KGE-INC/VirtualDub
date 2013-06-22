@@ -44,9 +44,11 @@ inline bool VDIsWindowsNT() {
 
 enum {
 #ifdef _M_AMD64
-	MENUITEMINFO_SIZE_VERSION_400A = sizeof(MENUITEMINFO)
+	MENUITEMINFO_SIZE_VERSION_400A = sizeof(MENUITEMINFOA),
+	MENUITEMINFO_SIZE_VERSION_400W = sizeof(MENUITEMINFOW)
 #else
-	MENUITEMINFO_SIZE_VERSION_400A = (offsetof(MENUITEMINFO, cch) + sizeof(UINT))
+	MENUITEMINFO_SIZE_VERSION_400A = (offsetof(MENUITEMINFOA, cch) + sizeof(UINT)),
+	MENUITEMINFO_SIZE_VERSION_400W = (offsetof(MENUITEMINFOW, cch) + sizeof(UINT))
 #endif
 };
 
@@ -58,6 +60,7 @@ VDStringW	VDGetWindowTextW32(HWND hwnd);
 void		VDAppendMenuW32(HMENU hmenu, UINT flags, UINT id, const wchar_t *text);
 void		VDCheckMenuItemByCommandW32(HMENU hmenu, UINT cmd, bool checked);
 void		VDEnableMenuItemByCommandW32(HMENU hmenu, UINT cmd, bool checked);
+void		VDSetMenuItemTextByCommandW32(HMENU hmenu, UINT cmd, const wchar_t *text);
 
 LRESULT		VDDualCallWindowProcW32(WNDPROC wp, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 LRESULT		VDDualDefWindowProcW32(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);

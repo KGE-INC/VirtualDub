@@ -247,7 +247,15 @@ HWND DubStatus::Display(HWND hwndParent, int iInitialPriority) {
 	if (hwndStatus) {
 		if (fShowStatusWindow = opt->fShowStatus) {
 			SetWindowLong(hwndStatus, GWL_STYLE, GetWindowLong(hwndStatus, GWL_STYLE) & ~WS_POPUP);
-			ShowWindow(hwndStatus, SW_SHOW);
+
+			// Check the status of the main window. If it is minimized, minimize the status
+			// window too. This is a bit of an illegal tunnel but it is useful for now.
+
+			if (IsIconic(g_hWnd))
+				ShowWindow(hwndStatus, SW_SHOWMINNOACTIVE);
+			else
+				ShowWindow(hwndStatus, SW_SHOW);
+
 			SetFocus(GetDlgItem(hwndStatus, IDC_DRAW_INPUT));
 		}
 

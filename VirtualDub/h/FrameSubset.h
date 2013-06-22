@@ -90,11 +90,20 @@ public:
 	const_reference			back() const		{ return mTimeline.back(); }
 
 	void assign(const FrameSubset& src, sint64 start, sint64 len);
-	iterator erase(iterator it) { return mTimeline.erase(it); }
-	iterator erase(iterator it1, iterator it2) { return mTimeline.erase(it1, it2); }
+	iterator erase(iterator it) {
+		it = mTimeline.erase(it);
+		invalidateCache();
+		return it;
+	}
+	iterator erase(iterator it1, iterator it2) {
+		it1 = mTimeline.erase(it1, it2);
+		invalidateCache();
+		return it1;
+	}
 	void insert(iterator it, const value_type& v) {
 		FrameSubset tmp;
 		tmp.mTimeline.push_back(v);
+		tmp.invalidateCache();
 		insert(it, tmp);
 	}
 	void insert(iterator it, const FrameSubset& src);
@@ -103,13 +112,15 @@ public:
 	iterator findNode(sint64& poffset, sint64 iDstFrame);
 	const_iterator findNode(sint64& poffset, sint64 iDstFrame) const;
 
+	void swap(FrameSubset& x);
+
 	void dump();
 
-protected:
 	void invalidateCache() {
 		mCachedIterator = mTimeline.begin();
 		mCachedPosition = 0;
 	}
+protected:
 
 	tTimeline				mTimeline;
 	mutable iterator		mCachedIterator;

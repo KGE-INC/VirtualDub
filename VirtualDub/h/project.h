@@ -17,6 +17,21 @@ class IDubStatusHandler;
 class DubOptions;
 class VDProjectSchedulerThread;
 
+class IVDProjectUICallback {
+public:
+	virtual void UIRefreshInputFrame(bool bValid) = 0;
+	virtual void UIRefreshOutputFrame(bool bValid) = 0;
+	virtual void UISetDubbingMode(bool bActive, bool bIsPreview) = 0;
+	virtual void UIRunDubMessageLoop() = 0;
+	virtual void UICurrentPositionUpdated() = 0;
+	virtual void UISelectionUpdated(bool notifyUser) = 0;
+	virtual void UITimelineUpdated() = 0;
+	virtual void UIShuttleModeUpdated() = 0;
+	virtual void UISourceFileUpdated() = 0;
+	virtual void UIVideoSourceUpdated() = 0;
+	virtual void UIDubParametersUpdated() = 0;
+};
+
 class VDProject {
 public:
 	VDProject();
@@ -25,8 +40,17 @@ public:
 	virtual bool Attach(VDGUIHandle hwnd);
 	virtual void Detach();
 
+	void SetUICallback(IVDProjectUICallback *pCB);
+
 	VDTimeline& GetTimeline() { return mTimeline; }
+	void BeginTimelineUpdate(const wchar_t *undostr = 0);
 	void EndTimelineUpdate();
+
+	bool Undo();
+	bool Redo();
+	void ClearUndoStack();
+	const wchar_t *GetCurrentUndoAction();
+	const wchar_t *GetCurrentRedoAction();
 
 	bool Tick();
 
@@ -38,13 +62,14 @@ public:
 	tTextInfo& GetTextInfo() { return mTextInfo; }
 	const tTextInfo& GetTextInfo() const { return mTextInfo; }
 
-	void ClearSelection();
+	void ClearSelection(bool notifyUser = true);
 	bool IsSelectionEmpty();
 	bool IsSelectionPresent();
 	void SetSelectionStart();
-	void SetSelectionStart(VDPosition);
+	void SetSelectionStart(VDPosition pos, bool notifyUser = true);
 	void SetSelectionEnd();
-	void SetSelectionEnd(VDPosition);
+	void SetSelectionEnd(VDPosition pos, bool notifyUser = true);
+	void SetSelection(VDPosition start, VDPosition end, bool notifyUser = true);
 	VDPosition GetSelectionStartFrame();
 	VDPosition GetSelectionEndFrame();
 
@@ -54,6 +79,7 @@ public:
 	void Copy();
 	void Paste();
 	void Delete();
+	void DeleteInternal(bool tagAsCut, bool noTag);
 	void MaskSelection(bool bMasked);
 
 	void DisplayFrame(bool bDispInput = true);
@@ -70,6 +96,7 @@ public:
 	void PreviewInput();
 	void PreviewOutput();
 	void PreviewAll();
+	void RunNullVideoPass();
 	void CloseAVI();			// to be removed later....
 	void Close();
 	void StartServer();
@@ -114,19 +141,9 @@ protected:
 
 	void UpdateDubParameters();
 
-	virtual void UIRefreshInputFrame(bool bValid) = 0;
-	virtual void UIRefreshOutputFrame(bool bValid) = 0;
-	virtual void UISetDubbingMode(bool bActive, bool bIsPreview) = 0;
-	virtual void UIRunDubMessageLoop() = 0;
-	virtual void UICurrentPositionUpdated() = 0;
-	virtual void UISelectionUpdated() = 0;
-	virtual void UITimelineUpdated() = 0;
-	virtual void UIShuttleModeUpdated() = 0;
-	virtual void UISourceFileUpdated() = 0;
-	virtual void UIVideoSourceUpdated() = 0;
-	virtual void UIDubParametersUpdated() = 0;
-
 	VDGUIHandle		mhwnd;
+
+	IVDProjectUICallback *mpCB;
 
 	SceneDetector	*mpSceneDetector;
 	int		mSceneShuttleMode;
@@ -135,6 +152,18 @@ protected:
 
 	FrameSubset		mClipboard;
 	VDTimeline		mTimeline;
+
+	struct UndoEntry {
+		FrameSubset	mSubset;
+		VDStringW	mDescription;
+		VDPosition	mFrame;
+		VDPosition	mSelStart;
+		VDPosition	mSelEnd;
+
+		UndoEntry(const FrameSubset& s, const wchar_t *desc, VDPosition pos, VDPosition selStart, VDPosition selEnd) : mSubset(s), mDescription(desc), mFrame(pos), mSelStart(selStart), mSelEnd(selEnd) {}
+	};
+	std::list<UndoEntry>	mUndoStack;
+	std::list<UndoEntry>	mRedoStack;
 
 	IDubStatusHandler	*mpDubStatus;
 

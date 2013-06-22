@@ -1,6 +1,46 @@
 VirtualDub change log
 
-Build %build% (1.6.4, experimental): [%date%]
+Build %build% (1.6.5, experimental): [%date%]
+   [features added]
+   * Script: Added Sylia.Atoi(), Atol(), and Atod() functions to allow conversions from string to value.
+   * Script: Added VirtualDub.Log(string) command to output to log output (or console).
+   * Added vdub.exe launcher for basic command-line driven operation.
+   * Added multiple undo/redo for timeline edits.
+   * Added /? switch to list command-line options.
+   * Added support for reading paletted BMPs.
+   * Dub input format is now reported in the log.
+
+   [bugs fixed]
+   * Script: Binary operators sometimes promoted the wrong way, i.e. double + int -> int.
+   * Script: The old form of the Open() command didn't choose the right driver when a specific driver was requested, due to sorting by priority.
+   * Script: Fixed random crash when adding video filters after opening a video file.
+   * Script: Fixed crash when issuing SaveWAV() command with no audio stream.
+   * Capture: Fixed race condition induced random crash when RGB filtering and accelerated preview were both enabled.
+   * Capture: Capture stats were not updated while frame dropping was occurring, which sometimes made it hard to diagnose timing problems.
+   * Capture: Added adjustable limit on length of burst inserts when timing anomalies occur, to prevent the app from locking permanently on a very bad timing glitch.
+   * Capture: Audio device was not auto-saved.
+   * Capture: Fixed crash when attempting to capture with an unsupported video format (MPEG-1/2, interleaved DV, etc.).
+   * MPEG-1 video decoder occasionally glitched due to a missing end tag.
+   * Removed dumb debug code that was causing a "???" message box to appear when unrecognized command-line flags are seen.
+   * Fixed display panes not always updating properly.
+   * Fixed rare crash if an MPEG-1 open failed extremely early.
+   * Fixed cases where the render start/end point wasn't updated properly when a selection bound was used to "push" the other, i.e. "set end" before start, or vice versa.
+   * Paste (Ctrl+V) wasn't deleting the current selection before doing the insert.
+   * Hex editor: Scroll bar thumb wasn't reset to top when loading a new file.
+   * Fixed a bunch of busted paletted converters.
+   * Fixed dialogs that had swapped OK/Cancel buttons.
+   * Fixed conflicting accelerator for Audio > Conversion menu option.
+   * Fast recompress mode now tests source format before UYVY and YUY2.
+   * Y8 AVIs weren't accepted even though they could be generated.
+
+   [regressions fixed]
+   * Capture: "Hide on capture" now works.
+   * Capture: Preview/overlay display commands toggle once again.
+   * Priority drop-downs in preferences didn't have vertical scroll bars.
+   * Top-down uncompressed RGB AVIs weren't handled properly.
+   * Fixed busted non-MMX XRGB1555>XRGB8888 converter.
+
+Build 23174 (1.6.4, experimental): [February 12, 2004]
    [features added]
    * Capture: Added support for detecting and correcting discrepancies in the video time base. This can reduce frame drops if the incoming frame rate is unexpectedly and regularly too high or too low.
    * Capture: Added command-line support.

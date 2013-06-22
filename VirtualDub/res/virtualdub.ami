@@ -9,6 +9,9 @@ stringset 1 {		// kVDST_Dub
 	message 4, "Dub: Video codec produced delay frame while trying to flush codec B-frame delay! Ignoring to avert possible infinite loop.";
 	message 5, "Dub: Video codec is requesting B-frame delay %d frames longer than end of video! Stopping video stream to avert possible infinite loop.";
 	message 6, "Dub: Fast recompress mode started with format: %hs.";
+	message 7, "Dub: Recompressing using format: %hs.";
+	message 8, "Dub: Input (decompression) format is: %hs.";
+	message 9, "Dub: Output (compression) format is: %hs.";
 }
 
 stringset 2 {		// kVDST_AVIReadHandler
@@ -58,6 +61,8 @@ stringset 7 {		// kVDST_ProjectUI
 	message 0, "%s";
 	message 1, "%s - [%s]";
 	message 2, "%s - [%s] (render in progress)";
+	message 3, "Undo %ls\tCtrl+U";
+	message 4, "Redo %ls\tCtrl+Y";
 }
 
 stringset 8 {		// kVDST_CaptureUI
@@ -66,6 +71,15 @@ stringset 8 {		// kVDST_CaptureUI
 
 stringset 9 {		// kVDST_Project
 	message 0, "The new video file has fewer video frames than the current file (%lld < %lld). Switching to it will result in changes to the edit list. Do you want to continue?";
+	message 1, "delete frame %lld";
+	message 2, "delete %[1]lld frames at %[0]lld";
+	message 3, "cut frame %lld";
+	message 4, "cut %[1]lld frames at %[0]lld";
+	message 5, "mask frame %lld";
+	message 6, "mask %[1]lld frames at %[0]lld";
+	message 7, "paste";
+	message 8, "scan for errors";
+	message 9, "reset timeline";
 }
 
 stringset 10 {		// kVDST_VideoSequenceCompressor
@@ -370,14 +384,19 @@ dialog 2101, "Capture sync options" : aspect=140, maxw=350 {
 	set 0 : vertical {
 		checkbox 100, "&Drop frames when captured frames are too close together";
 		checkbox 101, "&Insert null frames when captured frames are too far apart";
+		set 0: spacing=3, marginl=12 {
+			now valign=center;
+			label 0, "Null frame burst &limit:";
+			textedit 300, "" : minw=30, sunken;
+		}
 		label 0, "Resync mode:" : margint=5, marginb=5;
 		using marginl=10 {
 			option 200, "Do &not resync between audio and video streams";
 			option 201, "Sync &video to audio by adjusting video timing";
 			option 202, "Sync &audio to video by resampling the audio to a faster or slower rate";
 		}
-		checkbox 102, "&Correct video timing if it is off from real-time";
-		checkbox 103, "Automatically disable resync when integrated audio/video capture is detected" : margint=5, marginb=5;
+		checkbox 102, "&Correct video timing if it is off from real-time" : margint=5;
+		checkbox 103, "Automatically disable resync when integrated audio/video capture is detected" : marginb=5;
 		include template kTemplateOKCancel;
 	}
 }

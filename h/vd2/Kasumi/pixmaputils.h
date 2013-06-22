@@ -99,9 +99,7 @@ public:
 		init(w, h, format);
 	}
 
-	~VDPixmapBuffer() {
-		delete[] mpBuffer;
-	}
+	~VDPixmapBuffer();
 
 	void clear() {
 		delete[] mpBuffer;

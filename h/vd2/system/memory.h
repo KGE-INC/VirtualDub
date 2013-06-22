@@ -43,11 +43,15 @@ void VDInvertMemory(void *p, unsigned bytes);
 bool VDIsValidReadRegion(const void *p, size_t bytes);
 bool VDIsValidWriteRegion(void *p, size_t bytes);
 
+bool VDCompareRect(void *dst, ptrdiff_t dstpitch, const void *src, ptrdiff_t srcpitch, size_t w, size_t h);
+
 void VDMemset8(void *dst, uint8 value, size_t count);
 void VDMemset16(void *dst, uint16 value, size_t count);
 void VDMemset32(void *dst, uint32 value, size_t count);
 
 void VDMemset8Rect(void *dst, ptrdiff_t pitch, uint8 value, size_t w, size_t h);
+void VDMemset16Rect(void *dst, ptrdiff_t pitch, uint16 value, size_t w, size_t h);
+void VDMemset32Rect(void *dst, ptrdiff_t pitch, uint32 value, size_t w, size_t h);
 
 #if defined(_WIN32) && defined(_M_IX86)
 	extern void (__cdecl *VDFastMemcpyPartial)(void *dst, const void *src, size_t bytes);

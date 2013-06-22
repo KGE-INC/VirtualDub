@@ -21,6 +21,18 @@
 #include <vd2/system/Error.h>
 #include <vd2/Riza/w32audiocodec.h>
 
+namespace {
+	// Need to take care of this at some point.
+	void SafeCopyWaveFormat(vdstructex<WAVEFORMATEX>& dst, const WAVEFORMATEX *src) {
+		if (src->wFormatTag == WAVE_FORMAT_PCM) {
+			dst.resize(sizeof(WAVEFORMATEX));
+			dst->cbSize = 0;
+			memcpy(dst.data(), src, sizeof(PCMWAVEFORMAT));
+		} else
+			dst.assign(src, sizeof(WAVEFORMATEX) + src->cbSize);
+	}
+}
+
 VDAudioCodecW32::VDAudioCodecW32()
 	: mhStream(NULL)
 	, mOutputReadPt(0)
@@ -36,10 +48,10 @@ VDAudioCodecW32::~VDAudioCodecW32() {
 void VDAudioCodecW32::Init(const WAVEFORMATEX *pSrcFormat, const WAVEFORMATEX *pDstFormat) {
 	Shutdown();
 
-	mSrcFormat.assign(pSrcFormat, sizeof(WAVEFORMATEX) + (pSrcFormat->wFormatTag == WAVE_FORMAT_PCM ? 0 : pSrcFormat->cbSize));
+	SafeCopyWaveFormat(mSrcFormat, pSrcFormat);
 
 	if (pDstFormat) {
-		mDstFormat.assign(pDstFormat, sizeof(WAVEFORMATEX) + (pDstFormat->wFormatTag == WAVE_FORMAT_PCM ? 0 : pDstFormat->cbSize));
+		SafeCopyWaveFormat(mDstFormat, pDstFormat);
 	} else {
 		DWORD dwDstFormatSize;
 

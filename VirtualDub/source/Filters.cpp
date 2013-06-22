@@ -379,6 +379,24 @@ void FilterInstance::ConvertParameters(CScriptValue *dst, const VDScriptValue *s
 	}
 }
 
+namespace {
+	class VDScriptInterpreterAdapter : public IScriptInterpreter{
+	public:
+		VDScriptInterpreterAdapter(IVDScriptInterpreter *p) : mpInterp(p) {}
+
+		void ScriptError(int e) {
+			mpInterp->ScriptError(e);
+		}
+
+		char** AllocTempString(long l) {
+			return mpInterp->AllocTempString(l);
+		}
+
+	protected:
+		IVDScriptInterpreter *mpInterp;
+	};
+}
+
 void FilterInstance::ScriptFunctionThunkVoid(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
 	FilterInstance *const thisPtr = static_cast<FilterInstance *>((FilterActivation *)argv[-1].asObjectPtr());
 	int funcidx = isi->GetCurrentMethod() - &thisPtr->mScriptFunc[0];
@@ -390,7 +408,8 @@ void FilterInstance::ScriptFunctionThunkVoid(IVDScriptInterpreter *isi, VDScript
 
 	ConvertParameters(&params[0], argv, argc);
 
-	pf((IScriptInterpreter *)isi, static_cast<FilterActivation *>(thisPtr), &params[0], argc);
+	VDScriptInterpreterAdapter adapt(isi);
+	pf(&adapt, static_cast<FilterActivation *>(thisPtr), &params[0], argc);
 }
 
 void FilterInstance::ScriptFunctionThunkInt(IVDScriptInterpreter *isi, VDScriptValue *argv, int argc) {
@@ -404,7 +423,8 @@ void FilterInstance::ScriptFunctionThunkInt(IVDScriptInterpreter *isi, VDScriptV
 
 	ConvertParameters(&params[0], argv, argc);
 
-	int rval = pf((IScriptInterpreter *)isi, static_cast<FilterActivation *>(thisPtr), &params[0], argc);
+	VDScriptInterpreterAdapter adapt(isi);
+	int rval = pf(&adapt, static_cast<FilterActivation *>(thisPtr), &params[0], argc);
 
 	argv[0] = rval;
 }
@@ -420,7 +440,8 @@ void FilterInstance::ScriptFunctionThunkVariadic(IVDScriptInterpreter *isi, VDSc
 
 	ConvertParameters(&params[0], argv, argc);
 
-	CScriptValue v(pf((IScriptInterpreter *)isi, static_cast<FilterActivation *>(thisPtr), &params[0], argc));
+	VDScriptInterpreterAdapter adapt(isi);
+	CScriptValue v(pf(&adapt, static_cast<FilterActivation *>(thisPtr), &params[0], argc));
 
 	argv[0] = (VDScriptValue&)v;
 }

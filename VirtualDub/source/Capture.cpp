@@ -698,6 +698,7 @@ VDCaptureProject::VDCaptureProject()
 	mTimingSetup.mbAllowLateInserts		= true;
 	mTimingSetup.mbCorrectVideoTiming	= false;
 	mTimingSetup.mbResyncWithIntegratedAudio	= true;
+	mTimingSetup.mInsertLimit			= 10;
 
 	mFilterSetup.mCropRect.clear();
 	mFilterSetup.mVertSquashMode		= IVDCaptureFilterSystem::kFilterDisable;
@@ -1532,6 +1533,8 @@ void VDCaptureProject::Capture(bool fTest) {
 	vdautoptr<IVDCaptureResyncFilter> pResyncFilter(VDCreateCaptureResyncFilter());
 	vdautoptr<IVDCaptureAudioCompFilter> pAudioCompFilter(VDCreateCaptureAudioCompFilter());
 
+	MyError pendingError;
+
 	try {
 		// get the input filename
 		icd.mpszFilename = VDFileSplitPath(mFilename.c_str());
@@ -1619,7 +1622,8 @@ unknown_PCM_format:
 
 		// initialize video
 		vdstructex<BITMAPINFOHEADER> bmiInput;
-		GetVideoFormat(bmiInput);
+		if (!GetVideoFormat(bmiInput))
+			throw MyError("The current video capture format is not compatible with AVI files.");
 
 		// initialize filtering
 		vdstructex<BITMAPINFOHEADER> filteredFormat;
@@ -1807,7 +1811,17 @@ unknown_PCM_format:
 
 			MSG msg;
 
-			while(GetMessage(&msg, NULL, 0, 0)) {
+			for(;;) {
+				BOOL result = GetMessage(&msg, NULL, 0, 0);
+
+				if (result == (BOOL)-1)
+					break;
+
+				if (!result) {
+					PostQuitMessage(msg.wParam);
+					break;
+				}
+
 				if (!msg.hwnd && msg.message == WM_APP+100)
 					break;
 
@@ -1858,8 +1872,8 @@ VDDEBUG("Capture has stopped.\n");
 		}
 
 		VDDEBUG("Yatta!!!\n");
-	} catch(const MyError& e) {
-		e.post((HWND)mhwnd, "Capture error");
+	} catch(MyError& e) {
+		pendingError.TransferFrom(e);
 	}
 
 	mpCaptureData = NULL;
@@ -1899,6 +1913,10 @@ VDDEBUG("Capture has stopped.\n");
 
 	// restore the callback
 	mpDriver->SetCallback(this);
+
+	// throw any pending errors
+	if (pendingError.gets())
+		throw pendingError;
 
 	// any warnings?
 
@@ -2190,8 +2208,12 @@ bool VDCaptureProject::InitFilter() {
 
 	memset(mFilterPalette, 0, sizeof mFilterPalette);
 
-	if (vformat->biCompression == BI_RGB && vformat->biBitCount <= 8)
+	if (vformat->biCompression == BI_RGB && vformat->biBitCount <= 8) {
 		palEnts = vformat->biClrUsed;
+
+		if (!palEnts)
+			palEnts = 1 << vformat->biBitCount;
+	}
 
 	int palOffset = VDGetSizeOfBitmapHeaderW32(vformat.data());
 	int realPalEnts = (vformat.size() - palOffset) >> 2;
@@ -2272,8 +2294,6 @@ void VDCaptureProject::ShutdownVideoHistogram() {
 
 bool VDCaptureProject::InitVideoFrameTransfer() {
 	if (mpCB && !mbVideoFrameTransferActive) {
-		mbVideoFrameTransferActive = true;
-
 		VDPixmap px;
 		
 		px.data		= NULL;
@@ -2288,6 +2308,10 @@ bool VDCaptureProject::InitVideoFrameTransfer() {
 		px.pitch3	= mFilterInputLayout.pitch3;
 
 		mpCB->UICaptureAnalyzeBegin(px);
+
+		vdsynchronized(mVideoAnalysisLock) {
+			mbVideoFrameTransferActive = true;
+		}
 	}
 
 	return true;
@@ -2295,7 +2319,12 @@ bool VDCaptureProject::InitVideoFrameTransfer() {
 
 void VDCaptureProject::ShutdownVideoFrameTransfer() {
 	if (mbVideoFrameTransferActive) {
-		mbVideoFrameTransferActive = false;
+		// synchronize to make sure we're not actually doing the transfer
+		// while trying to disable it
+		vdsynchronized(mVideoAnalysisLock) {
+			mbVideoFrameTransferActive = false;
+		}
+
 		if (mpCB)
 			mpCB->UICaptureAnalyzeEnd();
 	}
@@ -2314,8 +2343,9 @@ void VDCaptureProject::DispatchAnalysis(const VDPixmap& px) {
 
 			}
 
-			if (mbEnableVideoFrameTransfer)
+			if (mbVideoFrameTransferActive) {
 				mpCB->UICaptureAnalyzeFrame(px);
+			}
 		}
 	}
 }
@@ -2677,88 +2707,89 @@ bool VDCaptureData::VideoCallback(const void *data, uint32 size, sint64 timestam
 	if (mTimingSetup.mbAllowEarlyDrops && mLastCapturedFrame > dwCurrentFrame+1) {
 		++mFramesDropped;
 		VDDEBUG("Dropping early frame at %ld ms\n", (long)(timestamp64 / 1000));
-		return 0;
-	}
-
-	// Run the frame through the filterer.
-
-	uint32 dwBytesUsed = size;
-	void *pFilteredData = (void *)data;
-
-	VDPixmap px(VDPixmapFromLayout(mInputLayout, pFilteredData));
-
-	// We don't need to lock here as it is illegal to change the filter
-	// mode while capture is running.
-	if (mpFilterSys) {
-		vdsynchronized(mpProject->mVideoFilterLock) {
-			mVideoProfileChannel.Begin(0x008000, "V-Filter");
-			mpFilterSys->Run(px);
-			mVideoProfileChannel.End();
-			pFilteredData = px.pitch < 0 ? vdptroffset(px.data, px.pitch*(px.h-1)) : px.data;
-			dwBytesUsed = (px.pitch < 0 ? -px.pitch : px.pitch) * px.h;
-		}
-	}
-
-	mpProject->DispatchAnalysis(px);
-
-	// While we are early, write dropped frames (grr)
-	//
-	// Don't do this for the first frame, since we don't
-	// have any frames preceding it!
-
-	if (mTimingSetup.mbAllowLateInserts && mTotalFramesCaptured > 1) {
-		while(mLastCapturedFrame < dwCurrentFrame) {
-			if (mpOutputFile)
-				mpVideoOut->write(0, pFilteredData, 0, 1);
-
-			++mLastCapturedFrame;
-			++mFramesDropped;
-			VDDEBUG("Late frame detected at %ld ms\n", (long)(timestamp64 / 1000));
-			mTotalVideoSize += 24;
-			mSegmentVideoSize += 24;
-
-			if (mpVideoCompressor)
-				mpVideoCompressor->dropFrame();
-
-			if (mpOutputFile)
-				CheckVideoAfter();
-		}
-	}
-
-	if (mpVideoCompressor) {
-		bool isKey;
-		long lBytes = 0;
-		void *lpCompressedData;
-
-		mVideoProfileChannel.Begin(0x80c080, "V-Compress");
-		lpCompressedData = mpVideoCompressor->packFrame(pFilteredData, &isKey, &lBytes);
-		mVideoProfileChannel.End();
-
-		if (mpOutputFile) {
-			mVideoProfileChannel.Begin(0xe0e0e0, "V-Write");
-			mpVideoOut->write(
-					isKey ? AVIIF_KEYFRAME : 0,
-					lpCompressedData,
-					lBytes, 1);
-			mVideoProfileChannel.End();
-
-			CheckVideoAfter();
-		}
-
-		mLastVideoSize = lBytes + 24;
 	} else {
-		if (mpOutputFile) {
-			mVideoProfileChannel.Begin(0xe0e0e0, "V-Write");
-			mpVideoOut->write(key ? AVIIF_KEYFRAME : 0, pFilteredData, dwBytesUsed, 1);
-			mVideoProfileChannel.End();
-			CheckVideoAfter();
+		// Run the frame through the filterer.
+
+		uint32 dwBytesUsed = size;
+		void *pFilteredData = (void *)data;
+
+		VDPixmap px(VDPixmapFromLayout(mInputLayout, pFilteredData));
+
+		// We don't need to lock here as it is illegal to change the filter
+		// mode while capture is running.
+		if (mpFilterSys) {
+			vdsynchronized(mpProject->mVideoFilterLock) {
+				mVideoProfileChannel.Begin(0x008000, "V-Filter");
+				mpFilterSys->Run(px);
+				mVideoProfileChannel.End();
+				pFilteredData = px.pitch < 0 ? vdptroffset(px.data, px.pitch*(px.h-1)) : px.data;
+				dwBytesUsed = (px.pitch < 0 ? -px.pitch : px.pitch) * px.h;
+			}
 		}
 
-		mLastVideoSize = dwBytesUsed + 24;
-	}
+		mpProject->DispatchAnalysis(px);
 
-	++mLastCapturedFrame;
-	mSegmentVideoSize += mLastVideoSize;
+		// While we are early, write dropped frames (grr)
+		//
+		// Don't do this for the first frame, since we don't
+		// have any frames preceding it!
+
+		if (mTimingSetup.mbAllowLateInserts && mTotalFramesCaptured > 1) {
+			int dropsleft = mTimingSetup.mInsertLimit;
+
+			while(mLastCapturedFrame < dwCurrentFrame && dropsleft--) {
+				if (mpOutputFile)
+					mpVideoOut->write(0, pFilteredData, 0, 1);
+
+				++mLastCapturedFrame;
+				++mFramesDropped;
+				VDDEBUG("Late frame detected at %ld ms\n", (long)(timestamp64 / 1000));
+				mTotalVideoSize += 24;
+				mSegmentVideoSize += 24;
+
+				if (mpVideoCompressor)
+					mpVideoCompressor->dropFrame();
+
+				if (mpOutputFile)
+					CheckVideoAfter();
+			}
+		}
+
+		if (mpVideoCompressor) {
+			bool isKey;
+			long lBytes = 0;
+			void *lpCompressedData;
+
+			mVideoProfileChannel.Begin(0x80c080, "V-Compress");
+			lpCompressedData = mpVideoCompressor->packFrame(pFilteredData, &isKey, &lBytes);
+			mVideoProfileChannel.End();
+
+			if (mpOutputFile) {
+				mVideoProfileChannel.Begin(0xe0e0e0, "V-Write");
+				mpVideoOut->write(
+						isKey ? AVIIF_KEYFRAME : 0,
+						lpCompressedData,
+						lBytes, 1);
+				mVideoProfileChannel.End();
+
+				CheckVideoAfter();
+			}
+
+			mLastVideoSize = lBytes + 24;
+		} else {
+			if (mpOutputFile) {
+				mVideoProfileChannel.Begin(0xe0e0e0, "V-Write");
+				mpVideoOut->write(key ? AVIIF_KEYFRAME : 0, pFilteredData, dwBytesUsed, 1);
+				mVideoProfileChannel.End();
+				CheckVideoAfter();
+			}
+
+			mLastVideoSize = dwBytesUsed + 24;
+		}
+
+		++mLastCapturedFrame;
+		mSegmentVideoSize += mLastVideoSize;
+	}
 
 	if (global_clock - mLastUpdateTime > 500000)
 	{

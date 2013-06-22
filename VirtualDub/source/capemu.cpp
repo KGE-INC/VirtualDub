@@ -695,6 +695,9 @@ LRESULT CALLBACK VDCaptureDriverEmulation::StaticMessageWndProc(HWND hwnd, UINT 
 			char buf[8192];
 			uint32 bytes, samples;
 
+			if (availbytes > 8192)
+				availbytes = 8192;
+
 			int err = 0;
 			try {
 				err = pThis->mpAudio->read(pThis->mAudioPos, availbytes, buf, availbytes, &bytes, &samples);

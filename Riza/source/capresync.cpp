@@ -325,6 +325,7 @@ void VDCaptureResyncFilter::CapBegin(sint64 global_clock) {
 	mAudioWrittenBytes = 0;
 	mVideoRateScale		= 1.0;
 	mVideoTimeLastAudioBlock = 0;
+	mVideoLastRawTime	= 0;
 
 	mInputBuffer.resize(4096 * mChannels);
 	memset(mInputBuffer.data(), 0, mInputBuffer.size() * sizeof(mInputBuffer[0]));
@@ -342,6 +343,7 @@ bool VDCaptureResyncFilter::CapEvent(nsVDCapture::DriverEvent event) {
 }
 
 void VDCaptureResyncFilter::CapProcessData(int stream, const void *data, uint32 size, sint64 timestamp, bool key, sint64 global_clock)  {
+
 	if (stream == 0) {
 		// Correct for one form of the 71-minute bug.
 		//
@@ -357,7 +359,7 @@ void VDCaptureResyncFilter::CapProcessData(int stream, const void *data, uint32 
 			// Perform sanity checks.  We should be within ten seconds of the last frame.
 			sint64 bias;
 			
-			if (mVideoLastRawTime >= VD64(4285000))
+			if (mVideoLastRawTime >= VD64(4285000000))
 				bias = VD64(4294967296);	// 71 minute bug
 			else
 				bias = VD64(2147483648);	// 35 minute bug
@@ -367,6 +369,8 @@ void VDCaptureResyncFilter::CapProcessData(int stream, const void *data, uint32 
 			if (newtimestamp < mVideoLastRawTime + 5000000 && newtimestamp >= mVideoLastRawTime - 5000000)
 				mVideoTimingWrapAdjust += bias;
 		}
+
+		mVideoLastRawTime = timestamp;
 
 		timestamp += mVideoTimingWrapAdjust;
 	}

@@ -11,9 +11,7 @@ typedef VDScriptValue (*VDScriptRootHandlerPtr)(IVDScriptInterpreter *,char *,vo
 
 class IVDScriptInterpreter {
 public:
-	// Note: This must have the same layout as IScriptInterpreter in the plugin interface.
-
-	virtual	void Destroy()										=0;
+	virtual	~IVDScriptInterpreter() {}
 
 	virtual void SetRootHandler(VDScriptRootHandlerPtr, void *)	=0;
 
@@ -25,7 +23,6 @@ public:
 
 	virtual VDScriptValue LookupObjectMember(const VDScriptObject *obj, void *, char *szIdent) = 0;
 
-	// new methods (not exported)
 	virtual const VDScriptFunctionDef *GetCurrentMethod() = 0;
 	virtual int GetErrorLocation() = 0;
 	virtual VDScriptValue	DupCString(const char *) = 0;

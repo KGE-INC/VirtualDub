@@ -165,6 +165,21 @@ bool VDIsValidWriteRegion(const void *p0, size_t bytes) {
 	return true;
 }
 
+bool VDCompareRect(void *dst, ptrdiff_t dstpitch, const void *src, ptrdiff_t srcpitch, size_t w, size_t h) {
+	if (!w || !h)
+		return false;
+
+	do {
+		if (memcmp(dst, src, w))
+			return true;
+
+		dst = (char *)dst + dstpitch;
+		src = (const char *)src + srcpitch;
+	} while(--h);
+
+	return false;
+}
+
 void VDMemset8(void *dst, uint8 value, size_t count) {
 	if (count) {
 		uint8 *dst2 = (uint8 *)dst;
@@ -199,6 +214,24 @@ void VDMemset8Rect(void *dst, ptrdiff_t pitch, uint8 value, size_t w, size_t h) 
 	if (w>0 && h>0) {
 		do {
 			memset(dst, value, w);
+			dst = (char *)dst + pitch;
+		} while(--h);
+	}
+}
+
+void VDMemset16Rect(void *dst, ptrdiff_t pitch, uint16 value, size_t w, size_t h) {
+	if (w>0 && h>0) {
+		do {
+			VDMemset16(dst, value, w);
+			dst = (char *)dst + pitch;
+		} while(--h);
+	}
+}
+
+void VDMemset32Rect(void *dst, ptrdiff_t pitch, uint32 value, size_t w, size_t h) {
+	if (w>0 && h>0) {
+		do {
+			VDMemset32(dst, value, w);
 			dst = (char *)dst + pitch;
 		} while(--h);
 	}

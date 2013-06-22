@@ -149,6 +149,7 @@ if "%_check%"=="false" (
 	md out\Distribution\bindist
 	copy out\Release\VirtualDub.exe out\Distribution\bindist
 	copy out\Release\VirtualDub.vdi out\Distribution\bindist
+	copy out\Release\vdub.exe out\Distribution\bindist
 	copy out\Release\vdicmdrv.dll out\Distribution\bindist
 	copy out\Release\vdsvrlnk.dll out\Distribution\bindist
 	copy out\Release\vdremote.dll out\Distribution\bindist
@@ -157,11 +158,12 @@ if "%_check%"=="false" (
 	upx -9 out\Distribution\bindist\*.exe out\Distribution\bindist\*.dll
 	copy out\ReleaseAMD64\Veedub64.exe out\Distribution\bindist
 	copy out\ReleaseAMD64\Veedub64.vdi out\Distribution\bindist
+	copy out\ReleaseAMD64\vdub64.exe out\Distribution\bindist
 	xcopy VirtualDub\dist\* out\Distribution\bindist /s/e/i
 	copy copying out\Distribution\bindist
 	cd out\Distribution\bindist
-	zip -9 -X -r ..\bin.zip VirtualDub.exe VirtualDub.vdi VirtualDub.vdhelp *.dll auxsetup.exe aviproxy\* plugins\* copying
-	zip -9 -X ..\bin-amd64.zip Veedub64.* copying
+	zip -9 -X -r ..\bin.zip VirtualDub.exe VirtualDub.vdi VirtualDub.vdhelp vdub.exe *.dll auxsetup.exe aviproxy\* plugins\* copying
+	zip -9 -X ..\bin-amd64.zip Veedub64.* vdub64.exe copying
 	cd ..\..\..
 	zip -9 -X -j out\Distribution\linkmaps.zip out\Release\VirtualDub.map out\ReleaseAMD64\Veedub64.map
 )

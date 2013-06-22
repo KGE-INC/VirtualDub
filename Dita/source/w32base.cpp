@@ -154,7 +154,17 @@ int VDUIBaseWindowW32::DoModal() {
 	}
 
 	MSG msg;
-	while(mpModal && GetMessage(&msg, NULL, 0, 0)) {
+	while(mpModal) {
+		BOOL result = GetMessage(&msg, NULL, 0, 0);
+
+		if (result == (BOOL)-1)
+			break;
+
+		if (!result) {
+			PostQuitMessage(msg.wParam);
+			break;
+		}
+
 		if (IsDialogMessage(mhwnd, &msg))
 			continue;
 		TranslateMessage(&msg);

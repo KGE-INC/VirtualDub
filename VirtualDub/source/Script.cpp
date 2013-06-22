@@ -28,6 +28,7 @@
 #include <vd2/system/error.h>
 #include <vd2/system/vdalloc.h>
 #include <vd2/system/file.h>
+#include <vd2/system/log.h>
 #include <vd2/system/VDString.h>
 #include <vd2/Dita/services.h>
 #include <vd2/plugin/vdplugin.h>
@@ -60,13 +61,6 @@ extern const char *VDGetStartupArgument(int index);
 extern void FreeCompressor(COMPVARS *pCompVars);
 static VDScriptValue RootHandler(IVDScriptInterpreter *isi, char *szName, void *lpData);
 
-bool InitScriptSystem() {
-	return true;
-}
-
-void DeinitScriptSystem() {
-}
-
 ///////////////////////////////////////////////
 
 void RunScript(const wchar_t *name, void *hwnd) {
@@ -78,7 +72,6 @@ void RunScript(const wchar_t *name, void *hwnd) {
 				L"All Files (*.*)\0"						L"*.*\0"
 				;
 
-	IVDScriptInterpreter *isi = NULL;
 	VDStringW filenameW;
 
 	if (!name) {
@@ -90,30 +83,26 @@ void RunScript(const wchar_t *name, void *hwnd) {
 		name = filenameW.c_str();
 	}
 
-	if (!InitScriptSystem())
-		return;
-
 	const char *line = NULL;
 	int lineno = 1;
 
 	VDTextInputFile f(name);
 
-	try {
-		isi = VDCreateScriptInterpreter();
-		if (!isi)
-			throw MyError("Not enough memory to create script interpreter");
+	vdautoptr<IVDScriptInterpreter> isi(VDCreateScriptInterpreter());
 
+	g_project->BeginTimelineUpdate();
+
+	try {
 		isi->SetRootHandler(RootHandler, NULL);
 
 		while(line = f.GetNextLine())
 			isi->ExecuteLine(line);
 	} catch(const VDScriptError& cse) {
-		char buf[4096];
 		int pos = isi->GetErrorLocation();
 		int prelen = std::min<int>(pos, 50);
 		const char *s = line ? line : "";
 
-		sprintf(buf, "Error during script execution at line %d, column %d: %s\n\n"
+		throw MyError("Error during script execution at line %d, column %d: %s\n\n"
 						"    %.*s<!>%.50s"
 					, lineno
 					, pos+1
@@ -121,32 +110,17 @@ void RunScript(const wchar_t *name, void *hwnd) {
 					, prelen
 					, s + pos - prelen
 					, s + pos);
-
-		MessageBox(NULL, buf, "Sylia script error", MB_OK | MB_TASKMODAL | MB_TOPMOST);
-	} catch(const MyUserAbortError&) {
-		/* do nothing */
-	} catch(const MyError& e) {
-		e.post(NULL, g_szError);
 	}
 
-	isi->Destroy();
-
-	DeinitScriptSystem();
 	g_project->EndTimelineUpdate();
 }
 
 void RunScriptMemory(char *mem) {
-	IVDScriptInterpreter *isi = NULL;
-
-	if (!InitScriptSystem())
-		return;
+	vdautoptr<IVDScriptInterpreter> isi(VDCreateScriptInterpreter());
 
 	try {
 		std::vector<char> linebuffer;
 		char *s=mem, *t;
-
-		isi = VDCreateScriptInterpreter();
-		if (!isi) throw MyError("Not enough memory to create script interpreter");
 
 		isi->SetRootHandler(RootHandler, NULL);
 
@@ -164,23 +138,9 @@ void RunScriptMemory(char *mem) {
 			if (*s=='\n') ++s;
 		}
 
-	} catch(VDScriptError cse) {
-		MessageBox(NULL, isi->TranslateScriptError(cse), "Sylia script error", MB_OK | MB_TASKMODAL);
-	} catch(MyUserAbortError e) {
-		isi->Destroy();
-		DeinitScriptSystem();
-		throw MyError("Aborted by user");
-	} catch(const MyError&) {
-		isi->Destroy();
-		DeinitScriptSystem();
-
-		throw;
-//		e.post(NULL, szError);
+	} catch(const VDScriptError& cse) {
+		throw MyError("%s", isi->TranslateScriptError(cse));
 	}
-
-	isi->Destroy();
-
-	DeinitScriptSystem();
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -392,6 +352,9 @@ static const VDScriptObject obj_VDVFilters_instance={
 static void func_VDVFilters_Clear(IVDScriptInterpreter *, VDScriptValue *, int) {
 	FilterInstance *fa;
 
+	filters.DeinitFilters();
+	filters.DeallocateBuffers();
+
 	while(fa = (FilterInstance *)g_listFA.RemoveHead()) {
 		fa->Destroy();
 	}
@@ -411,6 +374,9 @@ static void func_VDVFilters_Add(IVDScriptInterpreter *isi, VDScriptValue *argv, 
 			if (!fa) VDSCRIPT_EXT_ERROR(OUT_OF_MEMORY);
 
 			fa->x1 = fa->y1 = fa->x2 = fa->y2 = 0;
+
+			filters.DeinitFilters();
+			filters.DeallocateBuffers();
 
 			g_listFA.AddHead(fa);
 
@@ -560,8 +526,6 @@ static void func_VDVideo_GetRange(IVDScriptInterpreter *, VDScriptValue *arglist
 
 static void func_VDVideo_SetRangeEmpty(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	g_project->ClearSelection();
-	g_dubOpts.video.lStartOffsetMS = 0;
-	g_dubOpts.video.lEndOffsetMS = 0;
 }
 
 static void func_VDVideo_SetRange(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
@@ -1331,7 +1295,15 @@ static void func_VirtualDub_OpenOld(IVDScriptInterpreter *, VDScriptValue *argli
 
 static void func_VirtualDub_Open(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	VDStringW filename(VDTextU8ToW(VDStringA(*arglist[0].asString())));
-	IVDInputDriver *pDriver = VDGetInputDriverByName(VDTextAToW(*arglist[1].asString()).c_str());
+	IVDInputDriver *pDriver = NULL;
+	bool extopen = false;
+	
+	if (arg_count > 1) {
+		pDriver = VDGetInputDriverByName(VDTextAToW(*arglist[1].asString()).c_str());
+
+		if (arg_count > 2)
+			extopen = !!arglist[2].asInt();
+	}
 
 	if (arg_count > 3) {
 		long l = ((strlen(*arglist[3].asString())+3)/4)*3;
@@ -1339,9 +1311,9 @@ static void func_VirtualDub_Open(IVDScriptInterpreter *, VDScriptValue *arglist,
 
 		memunbase64(buf, *arglist[3].asString(), l);
 
-		g_project->Open(filename.c_str(), pDriver, !!arglist[2].asInt(), true, false, buf);
+		g_project->Open(filename.c_str(), pDriver, extopen, true, false, buf);
 	} else
-		g_project->Open(filename.c_str(), pDriver, !!arglist[2].asInt(), true, false);
+		g_project->Open(filename.c_str(), pDriver, extopen, true, false);
 }
 
 static void func_VirtualDub_Append(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
@@ -1356,6 +1328,10 @@ static void func_VirtualDub_Close(IVDScriptInterpreter *, VDScriptValue *arglist
 
 static void func_VirtualDub_Preview(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
 	PreviewAVI(g_hWnd, NULL, g_prefs.main.iPreviewPriority,true);
+}
+
+static void func_VirtualDub_RunNullVideoPass(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
+	g_project->RunNullVideoPass();
 }
 
 static void func_VirtualDub_SaveAVI(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
@@ -1438,6 +1414,12 @@ static void func_VirtualDub_SaveWAV(IVDScriptInterpreter *, VDScriptValue *argli
 	SaveWAV(filename.c_str());
 }
 
+static void func_VirtualDub_Log(IVDScriptInterpreter *, VDScriptValue *arglist, int arg_count) {
+	const VDStringW text(VDTextU8ToW(VDStringA(*arglist[0].asString())));
+
+	VDLog(kVDLogInfo, text);
+}
+
 extern "C" unsigned long version_num;
 
 static VDScriptValue obj_VirtualDub_lookup(IVDScriptInterpreter *isi, const VDScriptObject *obj, void *lpVoid, char *szName) {
@@ -1477,17 +1459,20 @@ static const VDScriptFunctionDef obj_VirtualDub_functbl[]={
 	{ func_VirtualDub_SetStatus,			"SetStatus",			"0s" },
 	{ func_VirtualDub_OpenOld,			"Open",					"0sii" },
 	{ func_VirtualDub_OpenOld,			NULL,					"0siis" },
+	{ func_VirtualDub_Open,				NULL,					"0s" },
 	{ func_VirtualDub_Open,				NULL,					"0ssi" },
 	{ func_VirtualDub_Open,				NULL,					"0ssis" },
 	{ func_VirtualDub_Append,			"Append",				"0s" },
 	{ func_VirtualDub_Close,				"Close",				"0" },
 	{ func_VirtualDub_Preview,			"Preview",				"0" },
+	{ func_VirtualDub_RunNullVideoPass,	"RunNullVideoPass",		"0" },
 	{ func_VirtualDub_SaveAVI,			"SaveAVI",				"0s" },
 	{ func_VirtualDub_SaveCompatibleAVI, "SaveCompatibleAVI",	"0s" },
 	{ func_VirtualDub_SaveSegmentedAVI,	"SaveSegmentedAVI",		"0sii" },
 	{ func_VirtualDub_SaveImageSequence,	"SaveImageSequence",	"0ssii" },
 	{ func_VirtualDub_SaveImageSequence,	NULL,					"0ssiii" },
 	{ func_VirtualDub_SaveWAV,			"SaveWAV",				"0s" },
+	{ func_VirtualDub_Log,				"Log",					"0s" },
 	{ NULL }
 };
 
@@ -1502,3 +1487,4 @@ static VDScriptValue RootHandler(IVDScriptInterpreter *isi, char *szName, void *
 	VDSCRIPT_EXT_ERROR(VAR_NOT_FOUND);
 }
 
+ 

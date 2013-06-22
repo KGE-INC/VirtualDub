@@ -550,7 +550,7 @@ _vdasm_pixblt_XRGB1555_to_XRGB8888		proc	near public
 		add		ebp, ebp
 		mov		edx, [esp+4+16]
 		mov		ecx, [esp+12+16]
-		lea		edx, [edx+ebp*2-8]
+		lea		edx, [edx+ebp*2-4]
 		lea		ecx, [ecx+ebp-2]
 		neg		ebp
 		mov		[esp+20+16], ebp

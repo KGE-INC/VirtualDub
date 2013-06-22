@@ -44,3 +44,32 @@ AVIOutput::~AVIOutput() {
 	delete videoOut;
 }
 
+////////////////////////////////////
+
+class AVIVideoNullOutputStream : public AVIOutputStream {
+public:
+	void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 lSamples) {}
+};
+
+AVIOutputNull::~AVIOutputNull() {
+}
+
+bool AVIOutputNull::init(const wchar_t *szFile) {
+	if (!videoOut)
+		return false;
+	return true;
+}
+
+void AVIOutputNull::finalize() {
+}
+
+IVDMediaOutputStream *AVIOutputNull::createAudioStream() {
+	return NULL;
+}
+
+IVDMediaOutputStream *AVIOutputNull::createVideoStream() {
+	videoOut = new_nothrow AVIVideoNullOutputStream;
+	if (!videoOut)
+		throw MyMemoryError();
+	return videoOut;
+}

@@ -114,4 +114,14 @@ public:
 	IVDMediaOutputStream *getVideoOutput() { return videoOut; }
 };
 
+class AVIOutputNull : public AVIOutput {
+public:
+	~AVIOutputNull();
+	bool init(const wchar_t *szFile);
+	void finalize();
+
+	IVDMediaOutputStream *createAudioStream();
+	IVDMediaOutputStream *createVideoStream();
+};
+
 #endif

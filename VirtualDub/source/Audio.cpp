@@ -428,8 +428,6 @@ AudioStreamSource::~AudioStreamSource() {
 long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 	LONG lAddedBytes=0;
 	LONG lAddedSamples=0;
-	int err;
-	MMRESULT res;
 
 	// add filler samples as necessary
 
@@ -466,7 +464,7 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 		while(lBytesLeft > 0) {
 			// hmm... data still in the output buffer?
 			if (mPreskip) {
-				unsigned actual = mCodec.CopyOutput(NULL, mPreskip);
+				unsigned actual = mCodec.CopyOutput(NULL, mPreskip > 0x10000 ? 0x10000 : (uint32)mPreskip);
 
 				if (actual) {
 					VDASSERT(actual <= mPreskip);
@@ -494,13 +492,20 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 				bool successfulRead = false;
 
 				if (bytes > 0) {
+					int err;
 					do {
 						long to_read = bytes/nBlockAlign;
 
 						if (to_read > end_samp - cur_samp)
 							to_read = (long)(end_samp - cur_samp);
 
-						err = aSrc->read(cur_samp, to_read, dst, bytes, &ltActualBytes, &ltActualSamples);
+						vdprotected3("reading %u compressed audio samples starting at %I64d (stream length=%I64d)"
+									, unsigned, to_read
+									, sint64, cur_samp
+									, sint64, aSrc->getLength())
+						{
+							err = aSrc->read(cur_samp, to_read, dst, bytes, &ltActualBytes, &ltActualSamples);
+						}
 
 						if (err != AVIERR_OK && err != AVIERR_BUFFERTOOSMALL) {
 							if (err == AVIERR_FILEREAD)
@@ -543,7 +548,16 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 
 		if (max_samples > 0) {
 			uint32 bytes;
-			int err = aSrc->read(cur_samp, max_samples, buffer, 0x7FFFFFFFL, &bytes, &lSamples);
+			int err;
+
+			vdprotected3("reading %u raw audio samples starting at %I64d (stream length=%I64d)"
+						, unsigned, max_samples
+						, sint64, cur_samp
+						, sint64, aSrc->getLength())
+			{
+				err = aSrc->read(cur_samp, max_samples, buffer, 0x7FFFFFFFL, &bytes, &lSamples);
+			}
+
 			*lplBytes = bytes;
 
 			if (AVIERR_OK != err) {
@@ -594,13 +608,13 @@ bool AudioStreamSource::Skip(sint64 samples) {
 		mCodec.Restart();
 
 		// Trigger a reseek.
-		long new_pos = ((samples_read + samples) * (__int64)pwfex->nAvgBytesPerSec) / ((__int64)pwfex->nBlockAlign*pwfex->nSamplesPerSec);
+		sint64 new_pos = ((samples_read + samples) * (__int64)pwfex->nAvgBytesPerSec) / ((__int64)pwfex->nBlockAlign*pwfex->nSamplesPerSec);
 
 		if (new_pos > cur_samp)
 			cur_samp = new_pos;
 
 		// Skip fractional samples.
-		long samp_start = (new_pos * (__int64)pwfex->nSamplesPerSec*pwfex->nBlockAlign) / pwfex->nAvgBytesPerSec;
+		sint64 samp_start = (new_pos * (__int64)pwfex->nSamplesPerSec*pwfex->nBlockAlign) / pwfex->nAvgBytesPerSec;
 
 		mPreskip = ((samples_read + samples) - samp_start)*GetFormat()->nBlockAlign;
 
@@ -668,8 +682,8 @@ AudioStreamConverter::AudioStreamConverter(AudioStream *src, bool to_16bit, bool
 
 	memcpy(oFormat = AllocFormat(src->GetFormatLen()), iFormat, src->GetFormatLen());
 
-	oFormat->nChannels = to_stereo ? 2 : 1;
-	oFormat->wBitsPerSample = to_16bit ? 16 : 8;
+	oFormat->nChannels = (uint16)(to_stereo ? 2 : 1);
+	oFormat->wBitsPerSample = (uint16)(to_16bit ? 16 : 8);
 
 	bytesPerInputSample = (iFormat->nChannels>1 ? 2 : 1)
 						* (iFormat->wBitsPerSample>8 ? 2 : 1);
@@ -693,7 +707,7 @@ AudioStreamConverter::AudioStreamConverter(AudioStream *src, bool to_16bit, bool
 	SetSource(src);
 
 	oFormat->nAvgBytesPerSec = oFormat->nSamplesPerSec * bytesPerOutputSample;
-	oFormat->nBlockAlign = bytesPerOutputSample;
+	oFormat->nBlockAlign = (uint16)bytesPerOutputSample;
 
 
 	if (!(cbuffer = allocmem(bytesPerInputSample * BUFFER_SIZE)))
@@ -1079,7 +1093,7 @@ AudioStreamResampler::AudioStreamResampler(AudioStream *src, long new_rate, bool
 
 	oFormat->nSamplesPerSec = MulDiv(iFormat->nSamplesPerSec, 0x80000L, samp_frac);
 	oFormat->nAvgBytesPerSec = oFormat->nSamplesPerSec * bytesPerSample;
-	oFormat->nBlockAlign = bytesPerSample;
+	oFormat->nBlockAlign = (uint16)bytesPerSample;
 
 	holdover = 0;
 	filter_bank = NULL;

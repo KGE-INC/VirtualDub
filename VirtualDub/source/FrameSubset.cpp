@@ -69,6 +69,7 @@ void FrameSubset::addRangeMerge(sint64 start, sint64 len, bool bMask) {
 	while(it != itEnd) {
 		if (start + len < it->start) {				// Isolated -- insert
 			mTimeline.insert(it, FrameSubsetNode(start, len, bMask));
+			invalidateCache();
 			return;
 		} else if (start + len >= it->start && start <= it->start+it->len) {		// Overlap!
 
@@ -474,6 +475,12 @@ FrameSubset::iterator FrameSubset::findNode(sint64& poffset, sint64 iDstFrame) {
 	mCachedIterator = it;
 	poffset = 0;
 	return end();
+}
+
+void FrameSubset::swap(FrameSubset& x) {
+	mTimeline.swap(x.mTimeline);
+	invalidateCache();
+	x.invalidateCache();
 }
 
 void FrameSubset::dump() {

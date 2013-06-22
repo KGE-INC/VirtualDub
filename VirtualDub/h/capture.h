@@ -74,6 +74,7 @@ struct VDCaptureTimingSetup {
 	bool		mbResyncWithIntegratedAudio;
 	bool		mbAllowEarlyDrops;
 	bool		mbAllowLateInserts;
+	int			mInsertLimit;
 };
 
 struct VDCaptureStatus {

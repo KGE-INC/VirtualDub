@@ -30,6 +30,7 @@
 #include <windows.h>
 #include <qedit.h>
 #include <guiddef.h>
+#include <dvdmedia.h>		// VIDEOINFOHEADER2
 #include <vector>
 
 using namespace nsVDCapture;
@@ -1641,10 +1642,25 @@ sint32 VDCaptureDriverDS::GetFramePeriod() {
 	bool bRet = false;
 
 	if (SUCCEEDED(mpVideoConfigCap->GetFormat(&past))) {
-		if (past->formattype == FORMAT_VideoInfo) {
+		if (past->formattype == FORMAT_VideoInfo || past->formattype == FORMAT_MPEGVideo) {
 			const VIDEOINFOHEADER *pvih = (const VIDEOINFOHEADER *)past->pbFormat;
 
 			rate = (pvih->AvgTimePerFrame + 5) / 10;
+
+			bRet = true;
+		} else if (past->formattype == FORMAT_VideoInfo2 || past->formattype == FORMAT_MPEG2Video) {
+			const VIDEOINFOHEADER2 *pvih = (const VIDEOINFOHEADER2 *)past->pbFormat;
+
+			rate = (pvih->AvgTimePerFrame + 5) / 10;
+
+			bRet = true;
+		} else if (past->formattype == FORMAT_DvInfo) {
+			const DVINFO& dvi = *(const DVINFO *)past->pbFormat;
+
+			if (dvi.dwDVVAuxSrc & 0x200000)
+				rate = 40000;	// PAL
+			else
+				rate = 33367;	// NTSC
 
 			bRet = true;
 		}
@@ -1844,7 +1860,8 @@ bool VDCaptureDriverDS::SetVideoFormat(const BITMAPINFOHEADER *pbih, uint32 size
 
 				// tweak the frame rate to be the same if they're within the margin
 				// of error (since we use 1us and not 100ns units)
-				if (abs(vhdr->AvgTimePerFrame - vhdr2.AvgTimePerFrame) < 20)
+				__int64 deltaTime = vhdr->AvgTimePerFrame - vhdr2.AvgTimePerFrame;
+				if (-20 < deltaTime && deltaTime < 20)
 					vhdr->AvgTimePerFrame = vhdr2.AvgTimePerFrame;
 
 				break;

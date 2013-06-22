@@ -413,11 +413,20 @@ void VDVideoDisplayWindow::OnPaint() {
 
 	++mInhibitRefresh;
 
-	if (mpMiniDriver && !mpMiniDriver->IsValid()) {
-		if (!mSource.bPersistent || !mpMiniDriver->Update(IVDVideoDisplayMinidriver::kAllFields)) {
-			if (mpCB)
-				mpCB->DisplayRequestUpdate(this);
-		}
+	bool bDisplayOK = false;
+
+	if (mpMiniDriver) {
+		if (mpMiniDriver->IsValid())
+			bDisplayOK = true;
+		else if (mSource.pixmap.data && mSource.bPersistent && !mpMiniDriver->Update(IVDVideoDisplayMinidriver::kAllFields))
+			bDisplayOK = true;
+	}
+
+	if (!bDisplayOK) {
+		--mInhibitRefresh;
+		if (mpCB)
+			mpCB->DisplayRequestUpdate(this);
+		++mInhibitRefresh;
 	}
 
 	PAINTSTRUCT ps;

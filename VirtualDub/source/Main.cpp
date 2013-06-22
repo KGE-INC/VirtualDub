@@ -122,8 +122,10 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
 	for(;;) {
 		while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE)) {
-			if (msg.message == WM_QUIT)
+			if (msg.message == WM_QUIT) {
+				PostQuitMessage(msg.wParam);
 				goto wm_quit_detected;
+			}
 
 			if (guiCheckDialogs(&msg))
 				continue;

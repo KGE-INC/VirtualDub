@@ -40,7 +40,7 @@ public:
 
 void guiOpenDebug();
 
-void guiDlgMessageLoop(HWND hDlg);
+bool guiDlgMessageLoop(HWND hDlg);
 bool guiCheckDialogs(LPMSG pMsg);
 void guiAddModelessDialog(ModelessDlgNode *pmdn);
 void VDInstallModelessDialogHookW32();

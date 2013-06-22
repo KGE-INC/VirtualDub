@@ -23,6 +23,7 @@
 #include <vd2/system/debug.h>
 #include <vd2/system/error.h>
 #include <vd2/system/log.h>
+#include <vd2/system/w32assist.h>
 #include <vd2/Dita/resources.h>
 #include "crash.h"
 #include "misc.h"
@@ -109,8 +110,8 @@ void VideoSequenceCompressor::init(HIC hic, BITMAPINFO *pbiInput, BITMAPINFO *pb
 	LRESULT	res;
 	int cbSizeIn, cbSizeOut;
 
-	cbSizeIn = pbiInput->bmiHeader.biSize + pbiInput->bmiHeader.biClrUsed*4;
-	cbSizeOut = pbiOutput->bmiHeader.biSize + pbiOutput->bmiHeader.biClrUsed*4;
+	cbSizeIn = VDGetSizeOfBitmapHeaderW32(&pbiInput->bmiHeader);
+	cbSizeOut = VDGetSizeOfBitmapHeaderW32(&pbiOutput->bmiHeader);
 
 	this->hic		= hic;
 	this->pbiInput	= (BITMAPINFO *)allocmem(cbSizeIn);

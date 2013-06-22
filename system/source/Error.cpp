@@ -69,11 +69,20 @@ void MyError::setf(const char *f, ...) {
 }
 
 void MyError::vsetf(const char *f, va_list val) {
-	buf = (char *)realloc(buf, 1024);
-	if (buf) {
-		buf[1023] = 0;
-		_vsnprintf(buf, 1023, f, val);
+	for(int size = 1024; size <= 32768; size += size) {
+		free(buf);
+		buf = NULL;
+
+		buf = (char *)malloc(size);
+		if (!buf)
+			return;
+
+		if ((unsigned)_vsnprintf(buf, size, f, val) < size)
+			return;
 	}
+
+	free(buf);
+	buf = NULL;
 }
 
 void MyError::post(HWND hWndParent, const char *title) const {

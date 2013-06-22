@@ -20,6 +20,7 @@
 
 #include <windows.h>
 #include <commctrl.h>
+#include <vd2/system/refcount.h>
 
 #define POSITIONCONTROLCLASS (szPositionControlName)
 
@@ -36,7 +37,7 @@ public:
 	virtual bool		GetFrameString(wchar_t *buf, size_t buflen, VDPosition frame) = 0;
 };
 
-class IVDPositionControl {
+class IVDPositionControl : public IVDRefCount {
 public:
 	virtual int			GetNiceHeight() = 0;
 

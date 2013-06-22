@@ -102,6 +102,7 @@ static const char g_szCapFrameRateDenominator[]="Frame rate denominator";
 static const char g_szCapSwitchSourcesTogether	[]="Switch sources together";
 static const char g_szCapStretchToWindow	[]="Stretch to window";
 static const char g_szCapVideoSource		[]="Video source";
+static const char g_szCapAudioDevice		[]="Audio Device";
 static const char g_szCapAudioSource		[]="Audio source";
 static const char g_szCapAudioInput			[]="Audio input";
 static const char g_szCapChannel			[]="Channel";
@@ -112,6 +113,7 @@ static const char g_szCaptureTimingAllowLateInserts				[] = "Timing: Allow late 
 static const char g_szCaptureTimingCorrectVideoTiming			[] = "Timing: Correct video clock";
 static const char g_szCaptureTimingResyncWithIntegratedAudio	[] = "Timing: Resync with integrated audio";
 static const char g_szCaptureTimingEnableLog					[] = "Timing: Enable log";
+static const char g_szCaptureTimingInsertLimit					[] = "Timing: Insert limit";
 
 static const char g_szFilterEnableFieldSwap			[] = "Enable field swap";
 static const char g_szFilterEnableLumaSquishBlack	[] = "Enable black luma squish";
@@ -317,7 +319,8 @@ protected:
 		kSaveDevSources		= 0x00000100,
 		kSaveDevInputs		= 0x00000200,
 		kSaveDevTunerSetup	= 0x00000400,
-		kSaveDevOnDisconnect = kSaveDevSources | kSaveDevInputs | kSaveDevTunerSetup,
+		kSaveDevAudioDevice	= 0x00000800,
+		kSaveDevOnDisconnect = kSaveDevSources | kSaveDevInputs | kSaveDevTunerSetup | kSaveDevAudioDevice,
 		kSaveDevAll			= 0xffffffff
 	};
 
@@ -856,6 +859,7 @@ void VDCaptureProjectUI::LoadLocalSettings() {
 	ts.mbAllowLateInserts	= key.getBool(g_szCaptureTimingAllowLateInserts, ts.mbAllowLateInserts);
 	ts.mbCorrectVideoTiming	= key.getBool(g_szCaptureTimingCorrectVideoTiming, ts.mbCorrectVideoTiming);
 	ts.mbResyncWithIntegratedAudio	= key.getBool(g_szCaptureTimingResyncWithIntegratedAudio, ts.mbResyncWithIntegratedAudio);
+	ts.mInsertLimit			= key.getInt(g_szCaptureTimingInsertLimit, ts.mInsertLimit);
 
 	mpProject->SetTimingSetup(ts);
 
@@ -926,6 +930,7 @@ void VDCaptureProjectUI::SaveLocalSettings() {
 	key.setBool(g_szCaptureTimingAllowLateInserts, ts.mbAllowLateInserts);
 	key.setBool(g_szCaptureTimingCorrectVideoTiming, ts.mbCorrectVideoTiming);
 	key.setBool(g_szCaptureTimingResyncWithIntegratedAudio, ts.mbResyncWithIntegratedAudio);
+	key.setInt(g_szCaptureTimingInsertLimit, ts.mInsertLimit);
 
 	const VDCaptureFilterSetup& fs = mpProject->GetFilterSetup();
 
@@ -1000,14 +1005,6 @@ void VDCaptureProjectUI::LoadDeviceSettings() {
 		}
 	}
 
-	len = devkey.getBinaryLength(g_szAudioFormat);
-	if (len >= 0) {
-		vdblock<char> buf(len);
-
-		if (devkey.getBinary(g_szAudioFormat, buf.data(), buf.size()))
-			mpProject->SetAudioFormat(*(const WAVEFORMATEX *)buf.data(), buf.size());
-	}
-
 	mbSwitchSourcesTogether = devkey.getBool(g_szCapSwitchSourcesTogether, true);
 
 	mDeviceDisplayOptions = devkey.getInt(g_szDisplaySlowModes, 0);
@@ -1043,8 +1040,25 @@ void VDCaptureProjectUI::LoadDeviceSettings() {
 	if (frnum && frden)
 		mpProject->SetFrameTime(VDRoundToIntFastFullRange(1000000.0 * (double)frden / (double)frnum));
 
-	// reload inputs, sources, and channel
+	// reload audio source
 	VDStringW s;
+	if (devkey.getString(g_szCapAudioDevice, s)) {
+		int audioDevIdx = mpProject->GetAudioDeviceByName(s.c_str());
+
+		if (audioDevIdx >= 0)
+			mpProject->SetAudioDevice(audioDevIdx);
+	}
+
+	// reload audio format
+	len = devkey.getBinaryLength(g_szAudioFormat);
+	if (len >= 0) {
+		vdblock<char> buf(len);
+
+		if (devkey.getBinary(g_szAudioFormat, buf.data(), buf.size()))
+			mpProject->SetAudioFormat(*(const WAVEFORMATEX *)buf.data(), buf.size());
+	}
+
+	// reload inputs, sources, and channel
 
 	if (devkey.getString(g_szCapVideoSource, s)) {
 		int videoIdx = mpProject->GetVideoSourceByName(s.c_str());
@@ -1126,6 +1140,19 @@ void VDCaptureProjectUI::SaveDeviceSettings(uint32 mask) {
 			devkey.removeValue(g_szVideoCompFormat);
 			devkey.removeValue(g_szVideoCompFormatData);
 		}
+	}
+
+	if (mask & kSaveDevAudioDevice) {
+		int idx = mpProject->GetAudioDeviceIndex();
+		const wchar_t *s = NULL;
+
+		if (idx >= 0)
+			s = mpProject->GetAudioDeviceName(idx);
+
+		if (s)
+			devkey.setString(g_szCapAudioDevice, s);
+		else
+			devkey.removeValue(g_szCapAudioDevice);
 	}
 
 	if (mask & kSaveDevAudio) {
@@ -1729,6 +1756,9 @@ void VDCaptureProjectUI::UICaptureAnalyzeFrame(const VDPixmap& format) {
 			if (mbDisplayAccelImagePending)
 				return;
 
+			if (mbHideOnCapture && mbCaptureActive)
+				return;
+
 			mbDisplayAccelImagePending = true;
 
 			// if we're in a field chop mode...
@@ -1808,8 +1838,12 @@ void VDCaptureProjectUI::UICaptureStart() {
 								FF_DONTCARE|DEFAULT_PITCH,
 								"Arial");
 
-	if (mbHideOnCapture)
+	if (mbHideOnCapture) {
 		mpProject->SetDisplayVisibility(false);
+
+		if (mbDisplayAccelActive)
+			ShowWindow(mhwndDisplay, SW_HIDE);
+	}
 
 	mCPUReader.Init();
 }
@@ -1831,8 +1865,12 @@ void VDCaptureProjectUI::UICaptureStatusUpdated(VDCaptureStatus& status) {
 void VDCaptureProjectUI::UICaptureEnd(bool success) {
 	mCPUReader.Shutdown();
 
-	if (mbHideOnCapture)
-		mpProject->SetDisplayVisibility(false);
+	if (mbHideOnCapture) {
+		mpProject->SetDisplayVisibility(true);
+
+		if (mbDisplayAccelActive)
+			ShowWindow(mhwndDisplay, SW_SHOWNA);
+	}
 
 	mbCaptureActive = false;
 	UICaptureFileUpdated();
@@ -2355,470 +2393,480 @@ bool VDCaptureProjectUI::OnCaptureSafeCommand(UINT id) {
 }
 
 bool VDCaptureProjectUI::OnCommand(UINT id) {
-	switch(id) {
-	case ID_FILE_SETCAPTUREFILE:
-		SuspendDisplay();
-		{
-			static const VDFileDialogOption opts[]={
-				{ VDFileDialogOption::kBool, 0, L"Set this capture filename as the default." },
-				{0}
-			};
+	try {
+		switch(id) {
+		case ID_FILE_SETCAPTUREFILE:
+			SuspendDisplay();
+			{
+				static const VDFileDialogOption opts[]={
+					{ VDFileDialogOption::kBool, 0, L"Set this capture filename as the default." },
+					{0}
+				};
 
-			int optvals[1]={false};
+				int optvals[1]={false};
 
-			const VDStringW capfile(VDGetSaveFileName(VDFSPECKEY_CAPTURENAME, mhwnd, L"Set Capture File", L"Audio-Video Interleave (*.avi)\0*.avi\0All Files (*.*)\0*.*\0", g_prefs.main.fAttachExtension ? L"avi" : NULL, opts, optvals));
+				const VDStringW capfile(VDGetSaveFileName(VDFSPECKEY_CAPTURENAME, mhwnd, L"Set Capture File", L"Audio-Video Interleave (*.avi)\0*.avi\0All Files (*.*)\0*.*\0", g_prefs.main.fAttachExtension ? L"avi" : NULL, opts, optvals));
 
-			if (!capfile.empty()) {
-				mpProject->SetCaptureFile(capfile.c_str(), false);
+				if (!capfile.empty()) {
+					mpProject->SetCaptureFile(capfile.c_str(), false);
 
-				if (optvals[0]) {
-					VDRegistryAppKey key("Capture");
+					if (optvals[0]) {
+						VDRegistryAppKey key("Capture");
 
-					key.setString(g_szDefaultCaptureFile, capfile.c_str());
+						key.setString(g_szDefaultCaptureFile, capfile.c_str());
+					}
 				}
 			}
-		}
-		ResumeDisplay();
-		break;
-	case ID_FILE_SETSTRIPINGSYSTEM:
-		SuspendDisplay();
-		{
-			const VDStringW capfile(VDGetSaveFileName(VDFSPECKEY_CAPTURENAME, mhwnd, L"Select Striping System for Internal Capture", L"AVI Stripe System (*.stripe)\0*.stripe\0All Files (*.*)\0*.*\0", g_prefs.main.fAttachExtension ? L"stripe" : NULL));
-
-			if (!capfile.empty()) {
-				try {
-					mpProject->SetCaptureFile(capfile.c_str(), true);
-
-					UICaptureFileUpdated();
-				} catch(const MyError& e) {
-					e.post((HWND)mhwnd, g_szError);
-				}
-			}
-		}
-		ResumeDisplay();
-		break;
-
-	case ID_FILE_ALLOCATEDISKSPACE:
-		extern bool VDShowCaptureAllocateDialog(VDGUIHandle hwndParent, const VDStringW& path);
-
-		SuspendDisplay();
-		VDShowCaptureAllocateDialog(mhwnd, mpProject->GetCaptureFile());
-		ResumeDisplay();
-		break;
-
-	case ID_FILE_INCREMENT:
-		mpProject->IncrementFileID();
-		break;
-
-	case ID_FILE_DECREMENT:
-		mpProject->DecrementFileID();
-		break;
-
-	case ID_FILE_EXITCAPTUREMODE:
-		{
-			VDUIFrame *pFrame = VDUIFrame::GetFrame((HWND)mhwnd);
-
-			pFrame->SetNextMode(2);
-			pFrame->Detach();
-		}
-		break;
-	case ID_DEVICE_DEVICESETTINGS:
-		{
-			extern bool VDShowCaptureDeviceOptionsDialog(VDGUIHandle h, uint32& opts);
-			uint32 opts = 0;
-
-			if (mDeviceDisplayOptions & CAPDRV_CRAPPY_OVERLAY)
-				opts += kVDCapDevOptSlowOverlay;
-			if (mDeviceDisplayOptions & CAPDRV_CRAPPY_PREVIEW)
-				opts += kVDCapDevOptSlowPreview;
-			if (mbSwitchSourcesTogether)
-				opts += kVDCapDevOptSwitchSourcesTogether;
-
-			if (VDShowCaptureDeviceOptionsDialog(mhwnd, opts)) {
-				mDeviceDisplayOptions &= ~(CAPDRV_CRAPPY_OVERLAY | CAPDRV_CRAPPY_PREVIEW);
-				mbSwitchSourcesTogether = false;
-
-				uint32 saveopts = 0;
-
-				if (opts & kVDCapDevOptSlowOverlay)
-					mDeviceDisplayOptions |= CAPDRV_CRAPPY_OVERLAY;
-				if (opts & kVDCapDevOptSlowPreview)
-					mDeviceDisplayOptions |= CAPDRV_CRAPPY_PREVIEW;
-				if (opts & kVDCapDevOptSwitchSourcesTogether)
-					mbSwitchSourcesTogether = true;
-
-				if (opts & kVDCapDevOptSaveCurrentAudioFormat)
-					saveopts += kSaveDevAudio;
-				if (opts & kVDCapDevOptSaveCurrentAudioCompFormat)
-					saveopts += kSaveDevAudioComp;
-				if (opts & kVDCapDevOptSaveCurrentVideoFormat)
-					saveopts += kSaveDevVideo;
-				if (opts & kVDCapDevOptSaveCurrentVideoCompFormat)
-					saveopts += kSaveDevVideoComp;
-				if (opts & kVDCapDevOptSaveCurrentFrameRate)
-					saveopts += kSaveDevFrameRate;
-				if (opts & kVDCapDevOptSaveCurrentDisplayMode)
-					saveopts += kSaveDevDisplayMode;
-
-				saveopts += kSaveDevDisplaySlowModes + kSaveDevMiscOptions;
-
-				SaveDeviceSettings(saveopts);
-			}
-		}
-		break;
-	case ID_AUDIO_ENABLE:
-		mpProject->SetAudioCaptureEnabled(!mpProject->IsAudioCaptureEnabled());
-		break;
-	case ID_AUDIO_ENABLEPLAYBACK:
-		mpProject->SetAudioPlaybackEnabled(!mpProject->IsAudioPlaybackEnabled());
-		break;
-	case ID_AUDIO_PEAKMETER:
-		if (mpVumeter)
-			ShutdownVumeter();
-		else
-			InitVumeter();
-		break;
-	case ID_AUDIO_RAWCAPTUREFORMAT:
-		if (mpProject->IsDriverConnected()) {
-			extern int VDShowCaptureRawAudioFormatDialog(VDGUIHandle h, const std::list<vdstructex<WAVEFORMATEX> >& formats, int sel, bool& saveit);
-
-			std::list<vdstructex<WAVEFORMATEX> > aformats;
-			vdstructex<WAVEFORMATEX> currentFormat;
-
-			mpProject->GetAudioFormat(currentFormat);
-			mpProject->GetAvailableAudioFormats(aformats);
-
-			std::list<vdstructex<WAVEFORMATEX> >::const_iterator it(aformats.begin()), itEnd(aformats.end());
-			int sel = -1;
-
-			for(int idx=0; it!=itEnd; ++it, ++idx) {
-				const vdstructex<WAVEFORMATEX>& wfex = *it;
-
-				if (wfex == currentFormat) {
-					sel = idx;
-					break;
-				}
-			}
-
-			bool saveit;
-			sel = VDShowCaptureRawAudioFormatDialog(mhwnd, aformats, sel, saveit);
-
-			if (sel >= 0) {
-				std::list<vdstructex<WAVEFORMATEX> >::const_iterator it(aformats.begin());
-
-				std::advance(it, sel);
-
-				const vdstructex<WAVEFORMATEX>& wfex = *it;
-				if (mpProject->SetAudioFormat(*wfex, wfex.size())) {
-					if (saveit)
-						SaveDeviceSettings(kSaveDevAudio);
-				}
-			}
-		}
-		break;
-	case ID_AUDIO_COMPRESSION:
-		{
-			vdstructex<WAVEFORMATEX> wfex;
-			vdstructex<WAVEFORMATEX> wfexSrc;
-			WAVEFORMATEX *pwfexSrc = NULL;
-			WAVEFORMATEX *pwfexOld = NULL;
-
-			if (mpProject->GetAudioCompFormat(wfex)) {
-				size_t len = wfex.size();
-				pwfexOld = (WAVEFORMATEX*)malloc(len);
-				memcpy(pwfexOld, wfex.data(), len);
-			}
-			
-			if (mpProject->GetAudioFormat(wfexSrc))
-				pwfexSrc = wfexSrc.data();
-
-			// pwfexOld is freed by AudioChooseCompressor
-			WAVEFORMATEX *pwfexNew = AudioChooseCompressor((HWND)mhwnd, pwfexOld, pwfexSrc);
-
-			if (!pwfexNew)
-				mpProject->SetAudioCompFormat();
-			else if (pwfexNew) {
-				mpProject->SetAudioCompFormat(*pwfexNew, sizeof(WAVEFORMATEX) + pwfexNew->cbSize);
-
-				free(pwfexNew);
-			}
-		}
-		break;
-	case ID_AUDIO_WINMIXER:
-		ShellExecute((HWND)mhwnd, NULL, "sndvol32.exe", "/r", NULL, SW_SHOWNORMAL);
-		break;
-	case ID_VIDEO_NODISPLAY:
-		SetDisplayMode(kDisplayNone);
-		break;
-	case ID_VIDEO_OVERLAY:
-		SetDisplayMode(kDisplayHardware);
-		break;
-	case ID_VIDEO_PREVIEW:
-		SetDisplayMode(kDisplaySoftware);
-		break;
-	case ID_VIDEO_HISTOGRAM:
-		if (mpProject->IsVideoHistogramEnabled())
-			ShutdownVideoHistogram();
-		else
-			InitVideoHistogram();
-		break;
-
-	case ID_VIDEO_FORMAT:
-	case ID_VIDEO_CUSTOMFORMAT:
-		SuspendDisplay();
-		if (id == ID_VIDEO_CUSTOMFORMAT)
-			DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_CUSTOMVIDEO), (HWND)mhwnd, CaptureCustomVidSizeDlgProc, (LPARAM)static_cast<IVDCaptureProject *>(mpProject));
-		else
-			mpProject->DisplayDriverDialog(kDialogVideoFormat);
-		ResumeDisplay();
-		break;
-
-	case ID_VIDEO_SOURCE:
-		mpProject->DisplayDriverDialog(kDialogVideoSource);
-		break;
-	case ID_VIDEO_DISPLAY:
-		mpProject->DisplayDriverDialog(kDialogVideoDisplay);
-		break;
-	case ID_VIDEO_CAPTUREPIN:
-		mpProject->DisplayDriverDialog(kDialogVideoCapturePin);
-		break;
-	case ID_VIDEO_PREVIEWPIN:
-		mpProject->DisplayDriverDialog(kDialogVideoPreviewPin);
-		break;
-	case ID_VIDEO_CAPTUREFILTER:
-		SuspendDisplay(true);
-		mpProject->DisplayDriverDialog(kDialogVideoCaptureFilter);
-		ResumeDisplay();
-		break;
-	case ID_VIDEO_CROSSBAR:
-		mpProject->DisplayDriverDialog(kDialogVideoCrossbar);
-		break;
-	case ID_VIDEO_CROSSBAR2:
-		mpProject->DisplayDriverDialog(kDialogVideoCrossbar2);
-		break;
-	case ID_VIDEO_TUNER:
-		mpProject->DisplayDriverDialog(kDialogTVTuner);
-		break;
-	case ID_VIDEO_COMPRESSION:
-		SuspendDisplay();
-		{
-			if (!(g_compression.dwFlags & ICMF_COMPVARS_VALID)) {
-				memset(&g_compression, 0, sizeof g_compression);
-				g_compression.dwFlags |= ICMF_COMPVARS_VALID;
-				g_compression.lQ = 10000;
-			}
-
-			g_compression.cbSize = sizeof(COMPVARS);
-
-			vdstructex<BITMAPINFOHEADER> bih;
-
-			if (mpProject->GetVideoFormat(bih))
-				ChooseCompressor((HWND)mhwnd, &g_compression, bih.data());
-			else
-				ChooseCompressor((HWND)mhwnd, &g_compression, NULL);
-		}
-		ResumeDisplay();
-		break;
-
-	case ID_VIDEO_FILTERS:
-		SuspendDisplay(mbDisplayAccelActive);
-		ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_FILTERS), (HWND)mhwnd, FilterDlgProc);
-		ResumeDisplay();
-		break;
-
-	case ID_VIDEO_ENABLEFILTERING:
-		{
-			VDCaptureFilterSetup filtsetup = mpProject->GetFilterSetup();
-			filtsetup.mbEnableRGBFiltering = !filtsetup.mbEnableRGBFiltering;
-			mpProject->SetFilterSetup(filtsetup);
-		}
-		break;
-
-	case ID_VIDEO_VRNONE:
-		{
-			VDCaptureFilterSetup filtsetup = mpProject->GetFilterSetup();
-			filtsetup.mVertSquashMode = IVDCaptureFilterSystem::kFilterDisable;
-			mpProject->SetFilterSetup(filtsetup);
-		}
-		break;
-	case ID_VIDEO_VR2LINEAR:
-		{
-			VDCaptureFilterSetup filtsetup = mpProject->GetFilterSetup();
-			filtsetup.mVertSquashMode = IVDCaptureFilterSystem::kFilterLinear;
-			mpProject->SetFilterSetup(filtsetup);
-		}
-		break;
-	case ID_VIDEO_VR2CUBIC:
-		{
-			VDCaptureFilterSetup filtsetup = mpProject->GetFilterSetup();
-			filtsetup.mVertSquashMode = IVDCaptureFilterSystem::kFilterCubic;
-			mpProject->SetFilterSetup(filtsetup);
-		}
-		break;
-
-	case ID_VIDEO_CLIPPING_SET:
-		VDShowCaptureCroppingDialog(mhwnd, mpProject);
-		break;
-
-	case ID_VIDEO_BT8X8TWEAKER:
-		CaptureDisplayBT848Tweaker((HWND)mhwnd);
-		break;
-
-	case ID_VIDEO_DISCONNECT:
-		mpProject->SelectDriver(-1);
-		break;
-
-	case ID_CAPTURE_SETTINGS:
-		{
-			extern bool VDShowCaptureSettingsDialog(VDGUIHandle hwndParent, CAPTUREPARMS& parms);
-
-			SuspendDisplay(mbDisplayAccelActive);
-
-			CAPTUREPARMS cp={0};
-			int videoCount=0, audioCount=0, audioSize=0;
-
-			mpProject->GetHardwareBuffering(videoCount, audioCount, audioSize);
-
-			cp.dwRequestMicroSecPerFrame = mpProject->GetFrameTime();
-			cp.wNumVideoRequested = videoCount;
-			cp.wNumAudioRequested = audioCount;
-			cp.dwAudioBufferSize = audioSize;
-			cp.fMakeUserHitOKToCapture = mbDisplayPrerollDialog;
-
-			if (VDShowCaptureSettingsDialog(mhwnd, cp)) {
-				mpProject->SetHardwareBuffering(cp.wNumVideoRequested, cp.wNumAudioRequested, cp.dwAudioBufferSize);
-				mpProject->SetFrameTime(cp.dwRequestMicroSecPerFrame);
-				mbDisplayPrerollDialog = !!cp.fMakeUserHitOKToCapture;
-			}
-
 			ResumeDisplay();
-		}
-		break;
+			break;
+		case ID_FILE_SETSTRIPINGSYSTEM:
+			SuspendDisplay();
+			{
+				const VDStringW capfile(VDGetSaveFileName(VDFSPECKEY_CAPTURENAME, mhwnd, L"Select Striping System for Internal Capture", L"AVI Stripe System (*.stripe)\0*.stripe\0All Files (*.*)\0*.*\0", g_prefs.main.fAttachExtension ? L"stripe" : NULL));
 
-	case ID_CAPTURE_PREFERENCES:
-		SuspendDisplay();
-#pragma vdpragma_TODO("FIXME")
-//		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_PREFERENCES), (HWND)mhwnd, CapturePreferencesDlgProc, (LPARAM)hWndCapture);
-		extern void VDShowCapturePreferencesDialog(VDGUIHandle h);
+				if (!capfile.empty()) {
+					try {
+						mpProject->SetCaptureFile(capfile.c_str(), true);
 
-		VDShowCapturePreferencesDialog(mhwnd);
-		ResumeDisplay();
-		break;
+						UICaptureFileUpdated();
+					} catch(const MyError& e) {
+						e.post((HWND)mhwnd, g_szError);
+					}
+				}
+			}
+			ResumeDisplay();
+			break;
 
-	case ID_CAPTURE_TIMING:
-		{
-			extern bool VDShowCaptureTimingDialog(VDGUIHandle h, VDCaptureTimingSetup& timing);
-
-			VDCaptureTimingSetup timing(mpProject->GetTimingSetup());
-
-			if (VDShowCaptureTimingDialog((VDGUIHandle)mhwnd, timing))
-				mpProject->SetTimingSetup(timing);
-		}
-		break;
-
-	case ID_CAPTURE_DISKIO:
-		{
-			VDCaptureDiskSettings diskSettings(mpProject->GetDiskSettings());
+		case ID_FILE_ALLOCATEDISKSPACE:
+			extern bool VDShowCaptureAllocateDialog(VDGUIHandle hwndParent, const VDStringW& path);
 
 			SuspendDisplay();
-			if (VDShowCaptureDiskIODialog((VDGUIHandle)mhwnd, diskSettings))
-				mpProject->SetDiskSettings(diskSettings);
+			VDShowCaptureAllocateDialog(mhwnd, mpProject->GetCaptureFile());
 			ResumeDisplay();
-		}
-		break;
+			break;
 
-	case ID_CAPTURE_SPILLSYSTEM:
-		SuspendDisplay();
-		DialogBox(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_SPILLSETUP), (HWND)mhwnd, CaptureSpillDlgProc);
-		ResumeDisplay();
-		break;
+		case ID_FILE_INCREMENT:
+			mpProject->IncrementFileID();
+			break;
 
-	case ID_CAPTURE_CAPTUREVIDEO:
-		mpProject->Capture(false);
-		break;
+		case ID_FILE_DECREMENT:
+			mpProject->DecrementFileID();
+			break;
 
-	case ID_CAPTURE_TEST:
-		mpProject->Capture(true);
-		break;
+		case ID_FILE_EXITCAPTUREMODE:
+			{
+				VDUIFrame *pFrame = VDUIFrame::GetFrame((HWND)mhwnd);
 
-	case ID_CAPTURE_SHOWPROFILER:
-		extern void VDOpenProfileWindow();
-		VDOpenProfileWindow();
-		break;
+				pFrame->SetNextMode(2);
+				pFrame->Detach();
+			}
+			break;
+		case ID_DEVICE_DEVICESETTINGS:
+			{
+				extern bool VDShowCaptureDeviceOptionsDialog(VDGUIHandle h, uint32& opts);
+				uint32 opts = 0;
 
-	case ID_CAPTURE_HIDEONCAPTURE:
-		mbHideOnCapture = !mbHideOnCapture;
-		break;
+				if (mDeviceDisplayOptions & CAPDRV_CRAPPY_OVERLAY)
+					opts += kVDCapDevOptSlowOverlay;
+				if (mDeviceDisplayOptions & CAPDRV_CRAPPY_PREVIEW)
+					opts += kVDCapDevOptSlowPreview;
+				if (mbSwitchSourcesTogether)
+					opts += kVDCapDevOptSwitchSourcesTogether;
 
-	case ID_CAPTURE_DISPLAYLARGETIMER:
-		mbDisplayLargeTimer = !mbDisplayLargeTimer;
-		break;
+				if (VDShowCaptureDeviceOptionsDialog(mhwnd, opts)) {
+					mDeviceDisplayOptions &= ~(CAPDRV_CRAPPY_OVERLAY | CAPDRV_CRAPPY_PREVIEW);
+					mbSwitchSourcesTogether = false;
 
-	case ID_CAPTURE_ENABLESPILL:
-		mpProject->SetSpillSystem(!mpProject->IsSpillEnabled());
-		break;
+					uint32 saveopts = 0;
 
-	case ID_CAPTURE_HWACCEL_NONE:
-		SetDisplayAccelMode(kDDP_Off);
-		break;
+					if (opts & kVDCapDevOptSlowOverlay)
+						mDeviceDisplayOptions |= CAPDRV_CRAPPY_OVERLAY;
+					if (opts & kVDCapDevOptSlowPreview)
+						mDeviceDisplayOptions |= CAPDRV_CRAPPY_PREVIEW;
+					if (opts & kVDCapDevOptSwitchSourcesTogether)
+						mbSwitchSourcesTogether = true;
 
-	case ID_CAPTURE_HWACCEL_TOP:
-		SetDisplayAccelMode(kDDP_Top);
-		break;
+					if (opts & kVDCapDevOptSaveCurrentAudioFormat)
+						saveopts += kSaveDevAudio;
+					if (opts & kVDCapDevOptSaveCurrentAudioCompFormat)
+						saveopts += kSaveDevAudioComp;
+					if (opts & kVDCapDevOptSaveCurrentVideoFormat)
+						saveopts += kSaveDevVideo;
+					if (opts & kVDCapDevOptSaveCurrentVideoCompFormat)
+						saveopts += kSaveDevVideoComp;
+					if (opts & kVDCapDevOptSaveCurrentFrameRate)
+						saveopts += kSaveDevFrameRate;
+					if (opts & kVDCapDevOptSaveCurrentDisplayMode)
+						saveopts += kSaveDevDisplayMode;
 
-	case ID_CAPTURE_HWACCEL_BOTTOM:
-		SetDisplayAccelMode(kDDP_Bottom);
-		break;
+					saveopts += kSaveDevDisplaySlowModes + kSaveDevMiscOptions;
 
-	case ID_CAPTURE_HWACCEL_BOTH:
-		SetDisplayAccelMode(kDDP_Both);
-		break;
-
-	case ID_CAPTURE_ENABLETIMINGLOG:
-		mpProject->SetLoggingEnabled(!mpProject->IsLoggingEnabled());
-		break;
-
-	case ID_CAPTURE_SAVETIMINGLOG:
-		if (mpProject->IsLogAvailable()) {
-			const VDStringW logfile(VDGetSaveFileName(VDFSPECKEY_CAPTURENAME, mhwnd, L"Save timing log", L"Comma-separated values (*.csv)\0*.csv\0All Files (*.*)\0*.*\0", g_prefs.main.fAttachExtension ? L"csv" : NULL));
-
-			if (!logfile.empty()) {
-				try {
-					mpProject->SaveLog(logfile.c_str());
-				} catch(const MyError& e) {
-					e.post((HWND)mhwnd, g_szError);
+					SaveDeviceSettings(saveopts);
 				}
 			}
+			break;
+		case ID_AUDIO_ENABLE:
+			mpProject->SetAudioCaptureEnabled(!mpProject->IsAudioCaptureEnabled());
+			break;
+		case ID_AUDIO_ENABLEPLAYBACK:
+			mpProject->SetAudioPlaybackEnabled(!mpProject->IsAudioPlaybackEnabled());
+			break;
+		case ID_AUDIO_PEAKMETER:
+			if (mpVumeter)
+				ShutdownVumeter();
+			else
+				InitVumeter();
+			break;
+		case ID_AUDIO_RAWCAPTUREFORMAT:
+			if (mpProject->IsDriverConnected()) {
+				extern int VDShowCaptureRawAudioFormatDialog(VDGUIHandle h, const std::list<vdstructex<WAVEFORMATEX> >& formats, int sel, bool& saveit);
+
+				std::list<vdstructex<WAVEFORMATEX> > aformats;
+				vdstructex<WAVEFORMATEX> currentFormat;
+
+				mpProject->GetAudioFormat(currentFormat);
+				mpProject->GetAvailableAudioFormats(aformats);
+
+				std::list<vdstructex<WAVEFORMATEX> >::const_iterator it(aformats.begin()), itEnd(aformats.end());
+				int sel = -1;
+
+				for(int idx=0; it!=itEnd; ++it, ++idx) {
+					const vdstructex<WAVEFORMATEX>& wfex = *it;
+
+					if (wfex == currentFormat) {
+						sel = idx;
+						break;
+					}
+				}
+
+				bool saveit;
+				sel = VDShowCaptureRawAudioFormatDialog(mhwnd, aformats, sel, saveit);
+
+				if (sel >= 0) {
+					std::list<vdstructex<WAVEFORMATEX> >::const_iterator it(aformats.begin());
+
+					std::advance(it, sel);
+
+					const vdstructex<WAVEFORMATEX>& wfex = *it;
+					if (mpProject->SetAudioFormat(*wfex, wfex.size())) {
+						if (saveit)
+							SaveDeviceSettings(kSaveDevAudio);
+					}
+				}
+			}
+			break;
+		case ID_AUDIO_COMPRESSION:
+			{
+				vdstructex<WAVEFORMATEX> wfex;
+				vdstructex<WAVEFORMATEX> wfexSrc;
+				WAVEFORMATEX *pwfexSrc = NULL;
+				WAVEFORMATEX *pwfexOld = NULL;
+
+				if (mpProject->GetAudioCompFormat(wfex)) {
+					size_t len = wfex.size();
+					pwfexOld = (WAVEFORMATEX*)malloc(len);
+					memcpy(pwfexOld, wfex.data(), len);
+				}
+				
+				if (mpProject->GetAudioFormat(wfexSrc))
+					pwfexSrc = wfexSrc.data();
+
+				// pwfexOld is freed by AudioChooseCompressor
+				WAVEFORMATEX *pwfexNew = AudioChooseCompressor((HWND)mhwnd, pwfexOld, pwfexSrc);
+
+				if (!pwfexNew)
+					mpProject->SetAudioCompFormat();
+				else if (pwfexNew) {
+					mpProject->SetAudioCompFormat(*pwfexNew, sizeof(WAVEFORMATEX) + pwfexNew->cbSize);
+
+					free(pwfexNew);
+				}
+			}
+			break;
+		case ID_AUDIO_WINMIXER:
+			ShellExecute((HWND)mhwnd, NULL, "sndvol32.exe", "/r", NULL, SW_SHOWNORMAL);
+			break;
+		case ID_VIDEO_NODISPLAY:
+			SetDisplayMode(kDisplayNone);
+			break;
+		case ID_VIDEO_OVERLAY:
+			if (GetDisplayMode() == kDisplayHardware)
+				SetDisplayMode(kDisplayNone);
+			else
+				SetDisplayMode(kDisplayHardware);
+			break;
+		case ID_VIDEO_PREVIEW:
+			if (GetDisplayMode() == kDisplaySoftware)
+				SetDisplayMode(kDisplayNone);
+			else
+				SetDisplayMode(kDisplaySoftware);
+			break;
+		case ID_VIDEO_HISTOGRAM:
+			if (mpProject->IsVideoHistogramEnabled())
+				ShutdownVideoHistogram();
+			else
+				InitVideoHistogram();
+			break;
+
+		case ID_VIDEO_FORMAT:
+		case ID_VIDEO_CUSTOMFORMAT:
+			SuspendDisplay();
+			if (id == ID_VIDEO_CUSTOMFORMAT)
+				DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_CUSTOMVIDEO), (HWND)mhwnd, CaptureCustomVidSizeDlgProc, (LPARAM)static_cast<IVDCaptureProject *>(mpProject));
+			else
+				mpProject->DisplayDriverDialog(kDialogVideoFormat);
+			ResumeDisplay();
+			break;
+
+		case ID_VIDEO_SOURCE:
+			mpProject->DisplayDriverDialog(kDialogVideoSource);
+			break;
+		case ID_VIDEO_DISPLAY:
+			mpProject->DisplayDriverDialog(kDialogVideoDisplay);
+			break;
+		case ID_VIDEO_CAPTUREPIN:
+			mpProject->DisplayDriverDialog(kDialogVideoCapturePin);
+			break;
+		case ID_VIDEO_PREVIEWPIN:
+			mpProject->DisplayDriverDialog(kDialogVideoPreviewPin);
+			break;
+		case ID_VIDEO_CAPTUREFILTER:
+			SuspendDisplay(true);
+			mpProject->DisplayDriverDialog(kDialogVideoCaptureFilter);
+			ResumeDisplay();
+			break;
+		case ID_VIDEO_CROSSBAR:
+			mpProject->DisplayDriverDialog(kDialogVideoCrossbar);
+			break;
+		case ID_VIDEO_CROSSBAR2:
+			mpProject->DisplayDriverDialog(kDialogVideoCrossbar2);
+			break;
+		case ID_VIDEO_TUNER:
+			mpProject->DisplayDriverDialog(kDialogTVTuner);
+			break;
+		case ID_VIDEO_COMPRESSION:
+			SuspendDisplay();
+			{
+				if (!(g_compression.dwFlags & ICMF_COMPVARS_VALID)) {
+					memset(&g_compression, 0, sizeof g_compression);
+					g_compression.dwFlags |= ICMF_COMPVARS_VALID;
+					g_compression.lQ = 10000;
+				}
+
+				g_compression.cbSize = sizeof(COMPVARS);
+
+				vdstructex<BITMAPINFOHEADER> bih;
+
+				if (mpProject->GetVideoFormat(bih))
+					ChooseCompressor((HWND)mhwnd, &g_compression, bih.data());
+				else
+					ChooseCompressor((HWND)mhwnd, &g_compression, NULL);
+			}
+			ResumeDisplay();
+			break;
+
+		case ID_VIDEO_FILTERS:
+			SuspendDisplay(mbDisplayAccelActive);
+			ActivateDubDialog(g_hInst, MAKEINTRESOURCE(IDD_FILTERS), (HWND)mhwnd, FilterDlgProc);
+			ResumeDisplay();
+			break;
+
+		case ID_VIDEO_ENABLEFILTERING:
+			{
+				VDCaptureFilterSetup filtsetup = mpProject->GetFilterSetup();
+				filtsetup.mbEnableRGBFiltering = !filtsetup.mbEnableRGBFiltering;
+				mpProject->SetFilterSetup(filtsetup);
+			}
+			break;
+
+		case ID_VIDEO_VRNONE:
+			{
+				VDCaptureFilterSetup filtsetup = mpProject->GetFilterSetup();
+				filtsetup.mVertSquashMode = IVDCaptureFilterSystem::kFilterDisable;
+				mpProject->SetFilterSetup(filtsetup);
+			}
+			break;
+		case ID_VIDEO_VR2LINEAR:
+			{
+				VDCaptureFilterSetup filtsetup = mpProject->GetFilterSetup();
+				filtsetup.mVertSquashMode = IVDCaptureFilterSystem::kFilterLinear;
+				mpProject->SetFilterSetup(filtsetup);
+			}
+			break;
+		case ID_VIDEO_VR2CUBIC:
+			{
+				VDCaptureFilterSetup filtsetup = mpProject->GetFilterSetup();
+				filtsetup.mVertSquashMode = IVDCaptureFilterSystem::kFilterCubic;
+				mpProject->SetFilterSetup(filtsetup);
+			}
+			break;
+
+		case ID_VIDEO_CLIPPING_SET:
+			VDShowCaptureCroppingDialog(mhwnd, mpProject);
+			break;
+
+		case ID_VIDEO_BT8X8TWEAKER:
+			CaptureDisplayBT848Tweaker((HWND)mhwnd);
+			break;
+
+		case ID_VIDEO_DISCONNECT:
+			mpProject->SelectDriver(-1);
+			break;
+
+		case ID_CAPTURE_SETTINGS:
+			{
+				extern bool VDShowCaptureSettingsDialog(VDGUIHandle hwndParent, CAPTUREPARMS& parms);
+
+				SuspendDisplay(mbDisplayAccelActive);
+
+				CAPTUREPARMS cp={0};
+				int videoCount=0, audioCount=0, audioSize=0;
+
+				mpProject->GetHardwareBuffering(videoCount, audioCount, audioSize);
+
+				cp.dwRequestMicroSecPerFrame = mpProject->GetFrameTime();
+				cp.wNumVideoRequested = videoCount;
+				cp.wNumAudioRequested = audioCount;
+				cp.dwAudioBufferSize = audioSize;
+				cp.fMakeUserHitOKToCapture = mbDisplayPrerollDialog;
+
+				if (VDShowCaptureSettingsDialog(mhwnd, cp)) {
+					mpProject->SetHardwareBuffering(cp.wNumVideoRequested, cp.wNumAudioRequested, cp.dwAudioBufferSize);
+					mpProject->SetFrameTime(cp.dwRequestMicroSecPerFrame);
+					mbDisplayPrerollDialog = !!cp.fMakeUserHitOKToCapture;
+				}
+
+				ResumeDisplay();
+			}
+			break;
+
+		case ID_CAPTURE_PREFERENCES:
+			SuspendDisplay();
+	#pragma vdpragma_TODO("FIXME")
+	//		DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_PREFERENCES), (HWND)mhwnd, CapturePreferencesDlgProc, (LPARAM)hWndCapture);
+			extern void VDShowCapturePreferencesDialog(VDGUIHandle h);
+
+			VDShowCapturePreferencesDialog(mhwnd);
+			ResumeDisplay();
+			break;
+
+		case ID_CAPTURE_TIMING:
+			{
+				extern bool VDShowCaptureTimingDialog(VDGUIHandle h, VDCaptureTimingSetup& timing);
+
+				VDCaptureTimingSetup timing(mpProject->GetTimingSetup());
+
+				if (VDShowCaptureTimingDialog((VDGUIHandle)mhwnd, timing))
+					mpProject->SetTimingSetup(timing);
+			}
+			break;
+
+		case ID_CAPTURE_DISKIO:
+			{
+				VDCaptureDiskSettings diskSettings(mpProject->GetDiskSettings());
+
+				SuspendDisplay();
+				if (VDShowCaptureDiskIODialog((VDGUIHandle)mhwnd, diskSettings))
+					mpProject->SetDiskSettings(diskSettings);
+				ResumeDisplay();
+			}
+			break;
+
+		case ID_CAPTURE_SPILLSYSTEM:
+			SuspendDisplay();
+			DialogBox(g_hInst, MAKEINTRESOURCE(IDD_CAPTURE_SPILLSETUP), (HWND)mhwnd, CaptureSpillDlgProc);
+			ResumeDisplay();
+			break;
+
+		case ID_CAPTURE_CAPTUREVIDEO:
+			mpProject->Capture(false);
+			break;
+
+		case ID_CAPTURE_TEST:
+			mpProject->Capture(true);
+			break;
+
+		case ID_CAPTURE_SHOWPROFILER:
+			extern void VDOpenProfileWindow();
+			VDOpenProfileWindow();
+			break;
+
+		case ID_CAPTURE_HIDEONCAPTURE:
+			mbHideOnCapture = !mbHideOnCapture;
+			break;
+
+		case ID_CAPTURE_DISPLAYLARGETIMER:
+			mbDisplayLargeTimer = !mbDisplayLargeTimer;
+			break;
+
+		case ID_CAPTURE_ENABLESPILL:
+			mpProject->SetSpillSystem(!mpProject->IsSpillEnabled());
+			break;
+
+		case ID_CAPTURE_HWACCEL_NONE:
+			SetDisplayAccelMode(kDDP_Off);
+			break;
+
+		case ID_CAPTURE_HWACCEL_TOP:
+			SetDisplayAccelMode(kDDP_Top);
+			break;
+
+		case ID_CAPTURE_HWACCEL_BOTTOM:
+			SetDisplayAccelMode(kDDP_Bottom);
+			break;
+
+		case ID_CAPTURE_HWACCEL_BOTH:
+			SetDisplayAccelMode(kDDP_Both);
+			break;
+
+		case ID_CAPTURE_ENABLETIMINGLOG:
+			mpProject->SetLoggingEnabled(!mpProject->IsLoggingEnabled());
+			break;
+
+		case ID_CAPTURE_SAVETIMINGLOG:
+			if (mpProject->IsLogAvailable()) {
+				const VDStringW logfile(VDGetSaveFileName(VDFSPECKEY_CAPTURENAME, mhwnd, L"Save timing log", L"Comma-separated values (*.csv)\0*.csv\0All Files (*.*)\0*.*\0", g_prefs.main.fAttachExtension ? L"csv" : NULL));
+
+				if (!logfile.empty()) {
+					try {
+						mpProject->SaveLog(logfile.c_str());
+					} catch(const MyError& e) {
+						e.post((HWND)mhwnd, g_szError);
+					}
+				}
+			}
+			break;
+
+		default:
+			if (id >= ID_VIDEO_CAPTURE_DRIVER && id < ID_VIDEO_CAPTURE_DRIVER+50) {
+				mpProject->SelectDriver(id - ID_VIDEO_CAPTURE_DRIVER);
+			} else if (id >= ID_AUDIO_CAPTURE_DRIVER && id < ID_AUDIO_CAPTURE_DRIVER+50) {
+				mpProject->SetAudioDevice(id - ID_AUDIO_CAPTURE_DRIVER);
+			} else if (id >= ID_AUDIO_CAPTURE_INPUT && id < ID_AUDIO_CAPTURE_INPUT+50) {
+				mpProject->SetAudioInput(id - ID_AUDIO_CAPTURE_INPUT - 1);
+			} else if (id >= ID_AUDIO_CAPTURE_SOURCE && id < ID_AUDIO_CAPTURE_SOURCE+50) {
+				mpProject->SetAudioSource(id - ID_AUDIO_CAPTURE_SOURCE - 1);
+			} else if (id >= ID_VIDEO_CAPTURE_SOURCE && id < ID_VIDEO_CAPTURE_SOURCE+50) {
+				int videoIdx = id - ID_VIDEO_CAPTURE_SOURCE - 1;
+				mpProject->SetVideoSource(videoIdx);
+
+				if (mbSwitchSourcesTogether)
+					SyncAudioSourceToVideoSource();
+			} else if (id >= ID_AUDIOMODE_11KHZ_8MONO && id <= ID_AUDIOMODE_44KHZ_16STEREO) {
+				id -= ID_AUDIOMODE_11KHZ_8MONO;
+				SetPCMAudioFormat(
+						11025<<(id/4),
+						0 != (id & 2),
+						0 != (id & 1));
+			} else if (id >= ID_FRAMERATE_6000FPS && id <= ID_FRAMERATE_1493FPS) {
+				mpProject->SetFrameTime(g_predefFrameRates[id - ID_FRAMERATE_6000FPS]);
+			} else
+				return false;
+
+			break;
 		}
-		break;
-
-	default:
-		if (id >= ID_VIDEO_CAPTURE_DRIVER && id < ID_VIDEO_CAPTURE_DRIVER+50) {
-			mpProject->SelectDriver(id - ID_VIDEO_CAPTURE_DRIVER);
-		} else if (id >= ID_AUDIO_CAPTURE_DRIVER && id < ID_AUDIO_CAPTURE_DRIVER+50) {
-			mpProject->SetAudioDevice(id - ID_AUDIO_CAPTURE_DRIVER);
-		} else if (id >= ID_AUDIO_CAPTURE_INPUT && id < ID_AUDIO_CAPTURE_INPUT+50) {
-			mpProject->SetAudioInput(id - ID_AUDIO_CAPTURE_INPUT - 1);
-		} else if (id >= ID_AUDIO_CAPTURE_SOURCE && id < ID_AUDIO_CAPTURE_SOURCE+50) {
-			mpProject->SetAudioSource(id - ID_AUDIO_CAPTURE_SOURCE - 1);
-		} else if (id >= ID_VIDEO_CAPTURE_SOURCE && id < ID_VIDEO_CAPTURE_SOURCE+50) {
-			int videoIdx = id - ID_VIDEO_CAPTURE_SOURCE - 1;
-			mpProject->SetVideoSource(videoIdx);
-
-			if (mbSwitchSourcesTogether)
-				SyncAudioSourceToVideoSource();
-		} else if (id >= ID_AUDIOMODE_11KHZ_8MONO && id <= ID_AUDIOMODE_44KHZ_16STEREO) {
-			id -= ID_AUDIOMODE_11KHZ_8MONO;
-			SetPCMAudioFormat(
-					11025<<(id/4),
-					0 != (id & 2),
-					0 != (id & 1));
-		} else if (id >= ID_FRAMERATE_6000FPS && id <= ID_FRAMERATE_1493FPS) {
-			mpProject->SetFrameTime(g_predefFrameRates[id - ID_FRAMERATE_6000FPS]);
-		} else
-			return false;
-
-		break;
+	} catch(const MyError& e) {
+		e.post((HWND)mhwnd, "Capture error");
 	}
 
 	return true;
@@ -3287,8 +3335,8 @@ static INT_PTR CALLBACK CaptureCustomVidSizeDlgProc(HWND hdlg, UINT msg, WPARAM 
 				pbih->biHeight			= h;
 				pbih->biPlanes			= 1;
 				pbih->biSizeImage		= h * ((w * pbih->biBitCount + 31) / 32) * 4 * pbih->biPlanes;
-				pbih->biXPelsPerMeter	= 80;
-				pbih->biYPelsPerMeter	= 80;
+				pbih->biXPelsPerMeter	= 0;
+				pbih->biYPelsPerMeter	= 0;
 				pbih->biClrUsed			= 0;
 				pbih->biClrImportant	= 0;
 

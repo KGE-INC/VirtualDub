@@ -29,7 +29,7 @@
 
 class IVDPositionControl;
 
-class VDProjectUI : public VDProject, public vdrefcounted<IVDUIFrameClient>, protected IVDVideoDisplayCallback, public IVDPositionControlCallback {
+class VDProjectUI : public VDProject, public vdrefcounted<IVDUIFrameClient>, protected IVDVideoDisplayCallback, public IVDPositionControlCallback, public IVDProjectUICallback {
 public:
 	VDProjectUI();
 	~VDProjectUI();
@@ -85,7 +85,7 @@ protected:
 	void UISetDubbingMode(bool bActive, bool bIsPreview);
 	void UIRunDubMessageLoop();
 	void UICurrentPositionUpdated();
-	void UISelectionUpdated();
+	void UISelectionUpdated(bool notifyUser);
 	void UITimelineUpdated();
 	void UIShuttleModeUpdated();
 	void UISourceFileUpdated();
@@ -105,7 +105,7 @@ protected:
 	LRESULT (VDProjectUI::*mpWndProc)(UINT, WPARAM, LPARAM);
 
 	HWND		mhwndPosition;
-	IVDPositionControl	*mpPosition;
+	vdrefptr<IVDPositionControl> mpPosition;
 	HWND		mhwndStatus;
 	HWND		mhwndInputFrame;
 	HWND		mhwndOutputFrame;
