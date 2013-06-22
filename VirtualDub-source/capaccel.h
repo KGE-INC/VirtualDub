@@ -34,6 +34,8 @@ private:
 	int nAlignX;
 	int nAlignW;
 	int mnColorKey;
+	int mnWidth;
+	int mnHeight;
 
 	bool mbSupportsColorKey;
 	bool mbSupportsArithStretchY;

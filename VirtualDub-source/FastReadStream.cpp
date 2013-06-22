@@ -211,7 +211,7 @@ int FastReadStream::_Commit(int stream, __int64 i64BlockNo) {
 	try {
 		++lHistory;
 
-		_RPT2(0,"Commit(%I64d): cache miss (stream %d)\n", i64BlockNo, stream);
+//		_RPT2(0,"Commit(%I64d): cache miss (stream %d)\n", i64BlockNo, stream);
 		if (iFile >= 0) {
 			int iActual;
 

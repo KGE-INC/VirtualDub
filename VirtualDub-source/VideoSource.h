@@ -92,8 +92,21 @@ public:
 
 	virtual char getFrameTypeChar(long lFrameNum) = 0;
 
+	enum eDropType {
+		kDroppable		= 0,
+		kDependant,
+		kIndependent,
+	};
+
+	virtual eDropType getDropType(long lFrameNum)=0;
+
 	virtual bool isKeyframeOnly();
 	virtual bool isType1();
+
+	virtual long	streamToDisplayOrder(long sample_num) { return sample_num; }
+	virtual long	displayToStreamOrder(long display_num) { return display_num; }
+
+	virtual bool isDecodable(long sample_num) = 0;
 };
 
 class VideoSourceAVI : public VideoSource {
@@ -165,8 +178,10 @@ public:
 	bool isUsingInternalMJPEG() const { return !!mdec; }
 
 	char getFrameTypeChar(long lFrameNum);
+	eDropType getDropType(long lFrameNum);
 	bool isKeyframeOnly();
 	bool isType1();
+	bool isDecodable(long sample_num);
 };
 
 #endif

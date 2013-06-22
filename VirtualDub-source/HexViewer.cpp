@@ -1046,7 +1046,7 @@ void HexViewer::Extract() throw() {
 
 		szName[0] = 0;
 
-		ofn.lStructSize			= sizeof(OPENFILENAME);
+		ofn.lStructSize			= 0x4c; //sizeof(OPENFILENAME);
 		ofn.hwndOwner			= hwnd;
 		ofn.lpstrFilter			= "All files (*.*)\0*.*\0";
 		ofn.lpstrCustomFilter	= NULL;

@@ -74,6 +74,8 @@ private:
 	DubPositionCallback	positionCallback;
 	int					iPriority;				// current priority level index of processes
 
+	int					mProgress;
+
 	static BOOL APIENTRY StatusMainDlgProc( HWND hWnd, UINT message, UINT wParam, LONG lParam );
 	static BOOL APIENTRY StatusVideoDlgProc( HWND hWnd, UINT message, UINT wParam, LONG lParam );
 	static BOOL APIENTRY StatusPerfDlgProc( HWND hWnd, UINT message, UINT wParam, LONG lParam );
@@ -172,7 +174,7 @@ static long pickClosestNiceBound(long val, bool higher) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-DubStatus::DubStatus() {
+DubStatus::DubStatus() : mProgress(0) {
 	iLastTitleMode		= TITLE_IDLE;
 	lLastTitleProgress	= 0;
 
@@ -751,10 +753,17 @@ BOOL APIENTRY DubStatus::StatusDlgProc( HWND hdlg, UINT message, UINT wParam, LO
 
 				/////////////
 
+				curVSample -= thisPtr->opt->video.frameRateDecimation * thisPtr->pvinfo->nLag;
+
+				if (curVSample<0)
+					curVSample = 0;
+
 				dwProgress = (curVSample>totalVSamples ? 4096 : MulDiv(curVSample, 4096, totalVSamples))
 							+(curASample>totalASamples ? 4096 : MulDiv(curASample, 4096, totalASamples));
 
 				if (!totalASamples || !totalVSamples || thisPtr->pvinfo->fAudioOnly) dwProgress *= 2;
+
+				thisPtr->mProgress = dwProgress;
 
 				SendMessage(GetDlgItem(hdlg, IDC_PROGRESS), PBM_SETPOS,	(WPARAM)dwProgress, 0);
 			}
@@ -855,7 +864,7 @@ void DubStatus::SetLastPosition(LONG pos) {
 							: pos > pvinfo->end_src
 									? pvinfo->end_src
 									: pos,
-					pvinfo->end_src);
+					pvinfo->end_src, mProgress);
 }
 
 void DubStatus::Freeze() {

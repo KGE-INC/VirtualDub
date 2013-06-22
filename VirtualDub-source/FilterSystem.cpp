@@ -409,6 +409,7 @@ int FilterSystem::ReadyFilters(FilterStateInfo *pfsi) {
 				fa->pfsi = pfsiPrev;
 
 			VDCHECKPOINT;
+			CHECK_FPU_STACK
 
 			if (fa->filter->startProc)
 				try {
@@ -417,6 +418,8 @@ int FilterSystem::ReadyFilters(FilterStateInfo *pfsi) {
 				} catch(MyError e) {
 					throw MyError("Cannot start filter '%s': %s", fa->filter->name, e.gets());
 				}
+
+			CHECK_FPU_STACK
 
 			fa = (FilterInstance *)fa->next;
 		}
@@ -510,15 +513,18 @@ int FilterSystem::RunFilters(FilterInstance *pfiStopPoint) {
 		// Run the filter.
 
 		VDCHECKPOINT;
+		CHECK_FPU_STACK
 
 		try {
 			if (rcode = fa->filter->runProc(fa, &g_filterFuncs))
 				break;
+			CHECK_FPU_STACK
 		} catch(MyError e) {
 			dwFlags |= FILTERS_ERROR;
 			throw MyError("Error running filter '%s': %s", fa->filter->name, e.gets());
 		}
 		VDCHECKPOINT;
+		CHECK_FPU_STACK
 
 		if (fa->flags & FILTERPARAM_NEEDS_LAST)
 			fa->realLast.BitBlt(0, 0, &fa->realSrc, 0, 0, -1, -1);

@@ -386,7 +386,7 @@ AudioStreamSource::AudioStreamSource(AudioSource *src, long first_samp, long max
 
 		if (acmFormatSuggest(NULL, iFormat, oFormat, dwOutputFormatSize, ACM_FORMATSUGGESTF_WFORMATTAG)) {
 			freemem(oFormat);
-			throw MyError("ACM failed to suggest audio decompression format");
+			throw MyError("The requested audio compression is not compatible with the input format. Check that the sampling rate and channel count of the input match those of the requested format.");
 		}
 
 		if (oFormat->wBitsPerSample!=8 && oFormat->wBitsPerSample!=16)
@@ -552,8 +552,12 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 
 					err = aSrc->read(cur_samp, to_read, (char *)inputBuffer + ashBuffer.cbSrcLength, INPUT_BUFFER_SIZE - ashBuffer.cbSrcLength, &ltActualBytes, &ltActualSamples);
 
-					if (err != AVIERR_OK && err != AVIERR_BUFFERTOOSMALL)
-						throw MyAVIError("AudioStreamSource", err);
+					if (err != AVIERR_OK && err != AVIERR_BUFFERTOOSMALL) {
+						if (err == AVIERR_FILEREAD)
+							throw MyError("Audio samples %lu-%lu could not be read in the source.  The file may be corrupted.", cur_samp, cur_samp+to_read-1);
+						else
+							throw MyAVIError("AudioStreamSource", err);
+					}
 
 					cur_samp += ltActualSamples;
 
@@ -608,8 +612,12 @@ long AudioStreamSource::_Read(void *buffer, long max_samples, long *lplBytes) {
 			max_samples = end_samp - cur_samp;
 
 		if (max_samples) {
-			if (AVIERR_OK != (err = aSrc->read(cur_samp, max_samples, buffer, 0x7FFFFFFFL, lplBytes, &lSamples)))
-				throw MyAVIError("AudioStreamSource", err);
+			if (AVIERR_OK != (err = aSrc->read(cur_samp, max_samples, buffer, 0x7FFFFFFFL, lplBytes, &lSamples))) {
+				if (err == AVIERR_FILEREAD)
+					throw MyError("Audio samples %lu-%lu could not be read in the source.  The file may be corrupted.", cur_samp, cur_samp+max_samples-1);
+				else
+					throw MyAVIError("AudioStreamSource", err);
+			}
 
 			if (!lSamples) fZeroRead = true;
 		} else
@@ -762,6 +770,10 @@ long AudioStreamConverter::_Read(void *buffer, long samples, long *lplBytes) {
 
 BOOL AudioStreamConverter::_isEnd() {
 	return source->isEnd();
+}
+
+bool AudioStreamConverter::Skip(long samples) {
+	return source->Skip(samples);
 }
 
 
@@ -1916,4 +1928,8 @@ long AudioStreamAmplifier::_Read(void *buffer, long samples, long *lplBytes) {
 
 BOOL AudioStreamAmplifier::_isEnd() {
 	return source->isEnd();
+}
+
+bool AudioStreamAmplifier::Skip(long samples) {
+	return source->Skip(samples);
 }

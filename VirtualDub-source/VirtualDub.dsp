@@ -90,7 +90,7 @@ BSC32=bscmake.exe
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:windows /debug /machine:I386
 # ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib vfw32.lib dxguid.lib msacm32.lib comctl32.lib $(IntDir)\verstub.obj ..\amplib_new\release\amplib.lib /nologo /subsystem:windows /incremental:no /map /debug /machine:I386 /nodefaultlib:"libc" /nodefaultlib:"libcmt"
-# SUBTRACT LINK32 /pdb:none /nodefaultlib
+# SUBTRACT LINK32 /profile /pdb:none /nodefaultlib
 # Begin Special Build Tool
 IntDir=.\Debug
 SOURCE="$(InputPath)"
@@ -1430,6 +1430,37 @@ InputName=a_yuv2rgb
 IntDir=.\Debug
 InputPath=.\a_yuv2rgb.asm
 InputName=a_yuv2rgb
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+
+# End Custom Build
+
+!ENDIF 
+
+# End Source File
+# Begin Source File
+
+SOURCE=.\a_yuv2rgbhq.asm
+
+!IF  "$(CFG)" == "VirtualDub - Win32 Release"
+
+# Begin Custom Build - Assembling...
+IntDir=.\Release
+InputPath=.\a_yuv2rgbhq.asm
+InputName=a_yuv2rgbhq
+
+"$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)
+
+# End Custom Build
+
+!ELSEIF  "$(CFG)" == "VirtualDub - Win32 Debug"
+
+# Begin Custom Build - Assembling...
+IntDir=.\Debug
+InputPath=.\a_yuv2rgbhq.asm
+InputName=a_yuv2rgbhq
 
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
 	ml /c /Zi /coff /nologo /Fo$(IntDir)\$(InputName).obj $(InputPath)

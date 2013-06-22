@@ -372,7 +372,7 @@ BOOL AVIOutputFile::_init(const char *szFile, LONG xSize, LONG ySize, BOOL video
 		if (INVALID_HANDLE_VALUE == hFile)
 			throw MyWin32Error("%s: %%s", GetLastError(), szME);
 
-		if (!(fastIO = new FastWriteStream(szFile, bufferSize, lChunkSize ? lChunkSize : bufferSize/2, fThreaded)))
+		if (!(fastIO = new FastWriteStream(szFile, bufferSize, lChunkSize ? lChunkSize : bufferSize/4, fThreaded)))
 			throw MyMemoryError();
 	} else {
 		hFile = CreateFile(szFile, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN | FILE_FLAG_WRITE_THROUGH, NULL);

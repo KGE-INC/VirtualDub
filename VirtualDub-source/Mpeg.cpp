@@ -410,7 +410,28 @@ public:
 	int streamGetRequiredCount(long *);
 	void *streamGetFrame(void *inputBuffer, long data_len, BOOL is_key, BOOL is_preroll, long frame_num);
 	void *getFrame(LONG frameNum);
+	eDropType getDropType(long);
 	int _read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuffer, LONG *lSamplesRead, LONG *lBytesRead);
+
+	long streamToDisplayOrder(long sample_num) {
+		if (sample_num<lSampleFirst || sample_num >= lSampleLast)
+			return sample_num;
+
+		long gopbase = sample_num;
+
+		if (!is_I(gopbase))
+			gopbase = prev_I(gopbase);
+
+		return gopbase + parentPtr->video_sample_list[sample_num].subframe_num;
+	}
+
+	long displayToStreamOrder(long display_num) {
+		return (display_num<lSampleFirst || display_num >= lSampleLast)
+			? display_num
+			: translate_frame(renumber_frame(display_num));
+	}
+
+	bool isDecodable(long sample_num);
 };
 
 VideoSourceMPEG::VideoSourceMPEG(InputFileMPEG *parent) {
@@ -474,6 +495,9 @@ VideoSourceMPEG::~VideoSourceMPEG() {
 bool VideoSourceMPEG::setDecompressedFormat(int depth) {
 	if (depth != 32 && depth != 24 && depth != 16) return FALSE;
 
+//#pragma warning("don't ship with this!!!!!!");
+//	if (depth != 32 && depth != 16) return FALSE;
+
 	return VideoSource::setDecompressedFormat(depth);
 }
 
@@ -536,6 +560,44 @@ char VideoSourceMPEG::getFrameTypeChar(long lFrameNum) {
 	}
 }
 
+VideoSource::eDropType VideoSourceMPEG::getDropType(long lFrameNum) {
+	if (lFrameNum<lSampleFirst || lFrameNum >= lSampleLast)
+		return kDroppable;
+
+	switch(parentPtr->video_sample_list[translate_frame(renumber_frame(lFrameNum))].frame_type) {
+	case MPEG_FRAME_TYPE_I:	return kIndependent;
+	case MPEG_FRAME_TYPE_P: return kDependant;
+	case MPEG_FRAME_TYPE_B: return kDroppable;
+	default:
+		return kDroppable;
+	}
+}
+
+bool VideoSourceMPEG::isDecodable(long sample_num) {
+	if (sample_num<lSampleFirst || sample_num >= lSampleLast)
+		return false;
+
+	long dep;
+
+	switch(parentPtr->video_sample_list[sample_num].frame_type) {
+	case MPEG_FRAME_TYPE_B:
+		dep = prev_IP(sample_num);
+		if (dep>=0) {
+			if (mpeg_lookup_frame(dep)<0)
+			return false;
+			sample_num = dep;
+		}
+	case MPEG_FRAME_TYPE_P:
+		dep = prev_IP(sample_num);
+		if (dep>=0 && mpeg_lookup_frame(dep)<0)
+			return false;
+	default:
+		break;
+	}
+
+	return true;
+}
+
 BOOL VideoSourceMPEG::_isKey(LONG lSample) {
 	return lSample<0 || lSample>=lSampleLast ? false : parentPtr->video_sample_list[translate_frame(renumber_frame(lSample))].frame_type == MPEG_FRAME_TYPE_I;
 }
@@ -586,7 +648,7 @@ void VideoSourceMPEG::streamSetDesiredFrame(long frame_num) {
 
 	stream_current_frame	= stream_desired_frame;
 
-	_RPT2(0,"Requested frame: %ld (%ld)\n", frame_num, stream_desired_frame);
+//	_RPT2(0,"Requested frame: %ld (%ld)\n", frame_num, stream_desired_frame);
 
 	switch(frame_type) {
 	case MPEG_FRAME_TYPE_P:
@@ -617,7 +679,7 @@ void VideoSourceMPEG::streamSetDesiredFrame(long frame_num) {
 
 			b = stream_current_frame;	// backward predictive frame
 
-			_RPT4(0,"B-frame requested: desire (%d,%d), have (%d,%d)\n", b, f, frame_back, frame_forw);
+//			_RPT4(0,"B-frame requested: desire (%d,%d), have (%d,%d)\n", b, f, frame_back, frame_forw);
 
 			if (frame_forw == f && frame_back == b) {
 				stream_current_frame = stream_desired_frame;
@@ -745,7 +807,7 @@ void *VideoSourceMPEG::streamGetFrame(void *inputBuffer, long data_len, BOOL is_
 	if (data_len<=1 && frame_num < lSampleLast)
 		frame_num = translate_frame(renumber_frame(frame_num));
 
-	_RPT2(0,"Attempting to fetch frame %d [%c].\n", frame_num, "0IPBD567"[parentPtr->video_sample_list[frame_num].frame_type]);
+//	_RPT2(0,"Attempting to fetch frame %d [%c].\n", frame_num, "0IPBD567"[parentPtr->video_sample_list[frame_num].frame_type]);
 
 	if (is_preroll || (buffer = mpeg_lookup_frame(frame_num))<0) {
 		if (!frame_num) mpeg_reset();
@@ -1257,7 +1319,7 @@ int AudioSourceMPEG::_read(LONG lStart, LONG lCount, LPVOID lpBuffer, LONG cbBuf
 				lCurrentPacket = lAudioPacket;
 
 			do {
-				_RPT1(0,"Decoding packet: %d\n", lCurrentPacket);
+//				_RPT1(0,"Decoding packet: %d\n", lCurrentPacket);
 
 				msi = &parentPtr->audio_sample_list[lCurrentPacket];
 				len = msi->size;

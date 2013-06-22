@@ -726,7 +726,7 @@ _asm_resize_ccint_col_MMX:
 
 	xor	esi,esi
 
-	movd		mm2,[ecx]
+	movd		mm2,[ecx+esi]
 	jmp		short ccint_col_loop_MMX@entry
 
 ccint_col_loop_MMX:

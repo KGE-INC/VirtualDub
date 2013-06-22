@@ -236,7 +236,7 @@ void Frameserver::Go(IVDubServerLink *ivdsl, char *name) {
 				if (!vSrc->setDecompressedFormat(24))
 					if (!vSrc->setDecompressedFormat(16))
 						if (!vSrc->setDecompressedFormat(8))
-							throw MyError("VCM cannot decompress to a format we can handle.");
+							throw MyError("The decompression codec cannot decompress to an RGB format. This is very unusual. Check that any \"Force YUY2\" options are not enabled in the codec's properties.");
 
 		vSrc->streamBegin(true);
 

@@ -153,13 +153,15 @@ void *AVIPipe::getWriteBuffer(long len, int *handle_ptr, DWORD timeout) {
 	return pBuffers[h].data;
 }
 
-void AVIPipe::postBuffer(long len, long samples, int exdata, int h) {
+void AVIPipe::postBuffer(long len, long samples, long dframe, int exdata, int droptype, int h) {
 
 	EnterCriticalSection(&critsec);
 
 	pBuffers[h].len		= len+1;
 	pBuffers[h].sample	= samples;
+	pBuffers[h].displayframe = dframe;
 	pBuffers[h].iExdata	= exdata;
+	pBuffers[h].droptype = droptype;
 	pBuffers[h].id		= cur_write++;
 
 	if (exdata == -1) ++total_audio;
@@ -171,7 +173,31 @@ void AVIPipe::postBuffer(long len, long samples, int exdata, int h) {
 	//	_RPT2(0,"Posted buffer %ld (ID %08lx)\n",handle,cur_write-1);
 }
 
-void *AVIPipe::getReadBuffer(long *len_ptr, long *samples_ptr, int *exdata_ptr, int *handle_ptr, DWORD timeout) {
+void AVIPipe::getDropDistances(int& total, int& indep) {
+	int h;
+
+	total = 0;
+	indep = 0x3FFFFFFF;
+
+	EnterCriticalSection(&critsec);
+
+	for(h=0; h<num_buffers; h++) {
+		int ahead = pBuffers[h].id - cur_read;
+
+		if (pBuffers[h].iExdata >= 0) {
+			if (pBuffers[h].len>1) {
+				if (pBuffers[h].droptype == kIndependent && ahead >= 0 && ahead < indep)
+					indep = ahead;
+			}
+
+			++total;
+		}
+	}
+
+	LeaveCriticalSection(&critsec);
+}
+
+void *AVIPipe::getReadBuffer(long *len_ptr, long *samples_ptr, long *displayframe_ptr, int *exdata_ptr, int *droptype_ptr, int *handle_ptr, DWORD timeout) {
 	int h;
 
 	EnterCriticalSection(&critsec);
@@ -215,10 +241,12 @@ void *AVIPipe::getReadBuffer(long *len_ptr, long *samples_ptr, int *exdata_ptr, 
 
 	LeaveCriticalSection(&critsec);
 
-	*len_ptr		= pBuffers[h].len-1;
-	*samples_ptr	= pBuffers[h].sample;
-	*exdata_ptr		= pBuffers[h].iExdata;
-	*handle_ptr		= h;
+	*len_ptr			= pBuffers[h].len-1;
+	*samples_ptr		= pBuffers[h].sample;
+	*displayframe_ptr	= pBuffers[h].displayframe;
+	*exdata_ptr			= pBuffers[h].iExdata;
+	*droptype_ptr		= pBuffers[h].droptype;
+	*handle_ptr			= h;
 
 	return pBuffers[h].data;
 }

@@ -1316,6 +1316,11 @@ _asm_YUVtoRGB32_row_ISSE:
 	mov	ebx,ARGB2_pointer
 
 col_loop_SSE:
+	prefetchnta [esi+ebp+32]
+	prefetchnta [edi+ebp+32]
+	prefetchnta [ecx+ebp*2+32]
+	prefetchnta [edx+ebp*2+32]
+
 	movd	mm0,[esi+ebp]		;U (byte)
 	pxor	mm7,mm7
 
@@ -1394,10 +1399,10 @@ col_loop_SSE:
 	punpckldq mm4,mm3		;P5:P4
 	punpckhdq mm7,mm3		;P7:P6
 
-	movq	[eax+ebp*8],mm5
-	movq	[eax+ebp*8+8],mm6
-	movq	[eax+ebp*8+16],mm4
-	movq	[eax+ebp*8+24],mm7
+	movntq	[eax+ebp*8],mm5
+	movntq	[eax+ebp*8+8],mm6
+	movntq	[eax+ebp*8+16],mm4
+	movntq	[eax+ebp*8+24],mm7
 
 	movq	mm6,[edx+ebp*2]		;Y
 	pand	mm6,MMX_00FFw
@@ -1497,6 +1502,11 @@ _asm_YUVtoRGB24_row_ISSE:
 	movd	[esp+16],mm0
 
 col_loop_ISSE24:
+	prefetchnta	[esi+ebp+32]
+	prefetchnta [edi+ebp+32]
+	prefetchnta [ecx+ebp*2+32]
+	prefetchnta [edx+ebp*2+32]
+
 	movd		mm0,[esi+ebp]	;U (byte)
 	pxor		mm7,mm7
 
@@ -1525,8 +1535,8 @@ col_loop_ISSE24:
 	pmullw		mm2,MMX_Ycoeff	;[lazy]
 	pmullw		mm3,MMX_Ycoeff	;[lazy]
 
-	pshufw		mm6,[esp+0],00000000b	;mm6 = U1U1U0U0
-	pshufw		mm7,[esp+8],00000000b	;mm7 = V0V0V0V0
+	pshufw		mm6,mm0,00000000b	;mm6 = U0U0U0U0
+	pshufw		mm7,mm1,00000000b	;mm7 = V0V0V0V0
 
 	pmullw		mm6,MMX_Ucoeff0
 	pshufw		mm4,mm2,01000000b	;mm4 = Y1Y0Y0Y0 [high]
@@ -1708,6 +1718,9 @@ _asm_YUVtoRGB16_row_ISSE:
 	mov	ebx,ARGB2_pointer
 
 col_loop_ISSE16:
+	prefetchnta [esi+ebp+32]
+	prefetchnta [edi+ebp+32]
+
 	movd	mm0,[esi+ebp]		;[0       ] U (byte)
 	pxor	mm7,mm7			;[0      7] 
 
@@ -1726,6 +1739,9 @@ col_loop_ISSE16:
 	;mm0: blue
 	;mm1: red
 	;mm2: green
+
+	prefetchnta [ecx+ebp*2+32]
+	prefetchnta [edx+ebp*2+32]
 
 	movq	mm6,[ecx+ebp*2]		;[0123  6 ] [1] Y
 	;<-->

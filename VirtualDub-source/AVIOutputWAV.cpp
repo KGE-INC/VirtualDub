@@ -112,6 +112,18 @@ BOOL AVIOutputWAV::finalize() {
 			fHeaderOpen = false;
 		}
 
+		if (hFile) {
+			LONG lLo = dwBytesWritten + len + 28;
+			LONG lHi = 0;
+			DWORD dwError;
+
+			if (0xFFFFFFFF != SetFilePointer(hFile, (LONG)lLo, &lHi, FILE_BEGIN)
+				|| (dwError = GetLastError()) != NO_ERROR) {
+
+				SetEndOfFile(hFile);
+			}
+		}
+
 		CloseHandle(hFile);
 		hFile = INVALID_HANDLE_VALUE;
 		if (dwErr = GetLastError())

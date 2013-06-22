@@ -1,6 +1,38 @@
 VirtualDub change log
 --------------- start VirtualDub change log ---------------
 
+Build 13110 (Version 1.4.6):
+   [features added]
+   * Enhanced error concealment in MPEG-1 video decoder
+     to reduce picture spew on errors (NOT THE PARSER).
+   * "Drop frames when behind" can now drop frames before
+     the decoder.  This helps with Huffyuv playback.
+   * Capture-mode noise reduction now works with UYVY
+     video as well.
+
+   [bug fixes]
+   * Fixed that blasted Audio Interleaving bug I introduced
+     in V1.4.5.
+   * Added sample skip support for audio converter and
+     amplifier filters, to prevent long delays when using
+     subsets with them.
+   * 'Save WAV' now truncates the file if the file you're
+     saving over is bigger than the new data it's being
+     replaced with.
+   * Fixed frame output display not updating when attempting
+     to display same frame after changing filters.
+   * Fixed audio interleaving dropping out after a preview.
+   * Read errors no longer appear interactively, blocking
+     batch operations.
+   * Attempting to shift in capture mode from 'preview with
+     histogram' to overlay mode no longer switches to
+     preview mode instead.
+   * Fixed problem with hardware accelerated preview in
+     capture mode with some ATI video cards.
+   * No more of "1057% complete" in Job Control.
+   * Changed some of the more embarrassingly bad error
+     messages.
+
 Build 12903 (Version 1.4.5):
    [features added]
    * Added DIV5 as yet another MS MPEG-4 V3 hack.

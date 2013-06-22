@@ -124,7 +124,7 @@ DubOptions g_dubOpts = {
 	},
 
 	{
-		1048576,					// 1Mb AVI output buffer
+		2097152,				// 2Mb AVI output buffer
 		65536,					// 64K WAV input buffer
 		32,						// 32 pipe buffers
 		true,					// dynamic enable
@@ -190,7 +190,7 @@ private:
 
 	void ResizeInputBuffer(long bufsize);
 	void ResizeAudioBuffer(long bufsize);
-	void ReadVideoFrame(long lVStreamPos, BOOL preload);
+	void ReadVideoFrame(long stream_frame, long display_frame, BOOL preload);
 	void ReadNullVideoFrame(long lVStreamPos);
 	long ReadAudio(long& lAStreamPos, long samples);
 	void CheckSpill(long videopt, long audiopt);
@@ -199,7 +199,7 @@ private:
 	void MainAddAudioFrame(int);
 	static void MainThreadKickstart(void *thisPtr);
 	void MainThread();
-	void WriteVideoFrame(void *buffer, int exdata, LONG lastSize, long sample_num);
+	void WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, long sample_num, long display_num);
 	void WriteAudio(void *buffer, long lActualBytes, long lActualSamples);
 	static void ProcessingThreadKickstart(void *thisPtr);
 	void ProcessingThread();
@@ -295,7 +295,8 @@ private:
 
 	DWORD				timer_counter, timer_period;
 	bool				fSyncToAudioEvenClock;
-	int					iFrameDisplacement;
+	bool				mbAudioFrozen;
+	bool				mbAudioFrozenValid;
 
 	int					iPriority;
 	long				lDropFrames;
@@ -317,6 +318,10 @@ private:
 	long				lSpillVideoOk, lSpillAudioOk;
 	long				lSegmentFrameLimit;
 	long				lSegmentFrameStart;
+
+	// This is used to keep track of the last video frame when decimating in DSC mode.
+
+	long				mDSCLastVideoFrame;
 
 	///////
 
@@ -439,8 +444,6 @@ Dubber::Dubber(DubOptions *xopt) {
 	inputHisto			= NULL;
 	outputHisto			= NULL;
 
-	iFrameDisplacement	= 0;
-
 	fPhantom = false;
 
 	pInvTelecine		= NULL;
@@ -456,6 +459,11 @@ Dubber::Dubber(DubOptions *xopt) {
 	lSegmentFrameStart	= 0;
 
 	hicOutput = NULL;
+
+	mDSCLastVideoFrame = -1;
+
+	mbAudioFrozen = false;
+	mbAudioFrozenValid = false;
 }
 
 Dubber::~Dubber() {
@@ -849,7 +857,7 @@ void Dubber::InitOutputFile(char *szFile) {
 
 			// Dividing dwRate isn't good if we get a fraction like 10/1!
 
-			if (AVIout->videoOut->streamInfo.dwScale > 0x7FFFFFFF / opt->video.frameRateDecimation)
+			if (AVIout->videoOut->streamInfo.dwScale > 0x7FFFFFFFUL / opt->video.frameRateDecimation)
 				AVIout->videoOut->streamInfo.dwRate		/= opt->video.frameRateDecimation;
 			else
 				AVIout->videoOut->streamInfo.dwScale	*= opt->video.frameRateDecimation;
@@ -1137,8 +1145,8 @@ bool Dubber::AttemptOutputOverlay() {
 	bihDisplayFormat.bV4Width			= outputBitmap->w;
 	bihDisplayFormat.bV4Height			= outputBitmap->h;
 	bihDisplayFormat.bV4Planes			= 1;
-	bihDisplayFormat.bV4BitCount		= ddpf.dwRGBBitCount;
-	bihDisplayFormat.bV4V4Compression		= BI_RGB;
+	bihDisplayFormat.bV4BitCount		= (WORD)ddpf.dwRGBBitCount;
+	bihDisplayFormat.bV4V4Compression	= BI_RGB;
 	bihDisplayFormat.bV4SizeImage		= outputBitmap->pitch * outputBitmap->h;
 
 	switch(ddpf.dwRGBBitCount) {
@@ -1483,7 +1491,7 @@ void Dubber::InitSelectInputFormat() {
 			if (!vSrc->setDecompressedFormat(24))
 				if (!vSrc->setDecompressedFormat(16))
 					if (!vSrc->setDecompressedFormat(8))
-						throw MyError("VCM cannot decompress to a format we can handle.");
+						throw MyError("The decompression codec cannot decompress to an RGB format. This is very unusual. Check that any \"Force YUY2\" options are not enabled in the codec's properties.");
 }
 
 void Dubber::Init(VideoSource *video, AudioSource *audio, AVIOutput *out, char *szFile, HDC hDC, COMPVARS *videoCompVars) {
@@ -1958,10 +1966,11 @@ void CALLBACK Dubber::DubFrameTimerProc(UINT uID, UINT uMsg, DWORD dwUser, DWORD
 
 	if (thisPtr->opt->video.fSyncToAudio) {
 		long lActualPoint;
+		AVIAudioPreviewOutputStream *pAudioOut = (AVIAudioPreviewOutputStream *)thisPtr->AVIout->audioOut;
 
-		lActualPoint = ((AVIAudioPreviewOutputStream *)thisPtr->AVIout->audioOut)->getPosition();
+		lActualPoint = pAudioOut->getPosition();
 
-		if (!((AVIAudioPreviewOutputStream *)thisPtr->AVIout->audioOut)->isFrozen()) {
+		if (!pAudioOut->isFrozen()) {
 			if (thisPtr->opt->video.nPreviewFieldMode) {
 				g_lPulseClock = MulDiv(lActualPoint, 2000, thisPtr->vInfo.usPerFrame);
 
@@ -1978,17 +1987,19 @@ void CALLBACK Dubber::DubFrameTimerProc(UINT uID, UINT uMsg, DWORD dwUser, DWORD
 			if (lActualPoint != -1) {
 				thisPtr->blitter->setPulseClock(g_lPulseClock);
 				thisPtr->fSyncToAudioEvenClock = false;
+				thisPtr->mbAudioFrozen = false;
 				return;
 			}
 		}
 
 		// Hmm... we have no clock!
 
+		thisPtr->mbAudioFrozen = true;
+
 		if (thisPtr->fSyncToAudioEvenClock || thisPtr->opt->video.nPreviewFieldMode) {
 			if (thisPtr->blitter) {
 				thisPtr->blitter->pulse();
 			}
-			++thisPtr->iFrameDisplacement;
 		}
 
 		thisPtr->fSyncToAudioEvenClock = !thisPtr->fSyncToAudioEvenClock;
@@ -2047,7 +2058,7 @@ void Dubber::ResizeAudioBuffer(long bufsize) {
 		throw "Error reallocating audio buffer.\n";
 }
 
-void Dubber::ReadVideoFrame(long lVStreamPos, BOOL preload) {
+void Dubber::ReadVideoFrame(long stream_frame, long display_frame, BOOL preload) {
 	LONG lActualBytes;
 	int hr;
 
@@ -2060,9 +2071,12 @@ void Dubber::ReadVideoFrame(long lVStreamPos, BOOL preload) {
 		buffer = pipe->getWriteBuffer(0, &handle, INFINITE);
 		if (!buffer) return;	// hmm, aborted...
 
-		pipe->postBuffer(0, lVStreamPos,
-			(vSrc->isKey(lVStreamPos) ? 0 : 1)
+		bool bIsKey = !!vSrc->isKey(display_frame);
+
+		pipe->postBuffer(0, stream_frame, display_frame,
+			(bIsKey ? 0 : 1)
 			+(preload ? 2 : 0),
+			0,
 			handle);
 
 		return;
@@ -2070,8 +2084,13 @@ void Dubber::ReadVideoFrame(long lVStreamPos, BOOL preload) {
 
 //	_RPT2(0,"Reading frame %ld (%s)\n", lVStreamPos, preload ? "preload" : "process");
 
-	hr = vSrc->read(lVStreamPos, 1, NULL, 0x7FFFFFFF, &lSize, NULL);
-	if (hr) throw MyAVIError("Dub/IO-Video", hr);
+	hr = vSrc->read(stream_frame, 1, NULL, 0x7FFFFFFF, &lSize, NULL);
+	if (hr) {
+		if (hr == AVIERR_FILEREAD)
+			throw MyError("Video frame %d could not be read from the source. The file may be corrupt.", stream_frame);
+		else
+			throw MyAVIError("Dub/IO-Video", hr);
+	}
 
 	// Add 4 bytes -- otherwise, we can get crashes with uncompressed video because
 	// the bitmap routines expect to be able to read 4 bytes out.
@@ -2079,8 +2098,13 @@ void Dubber::ReadVideoFrame(long lVStreamPos, BOOL preload) {
 	buffer = pipe->getWriteBuffer(lSize+4, &handle, INFINITE);
 	if (!buffer) return;	// hmm, aborted...
 
-	hr = vSrc->read(lVStreamPos, 1, buffer, lSize,	&lActualBytes,NULL); 
-	if (hr) throw MyAVIError("Dub/IO-Video", hr);
+	hr = vSrc->read(stream_frame, 1, buffer, lSize,	&lActualBytes,NULL); 
+	if (hr) {
+		if (hr == AVIERR_FILEREAD)
+			throw MyError("Video frame %d could not be read from the source. The file may be corrupt.", stream_frame);
+		else
+			throw MyAVIError("Dub/IO-Video", hr);
+	}
 
 	if (opt->video.mode > DubVideoOptions::M_NONE)
 		i64SegmentSize += lVideoSizeEstimate;
@@ -2089,25 +2113,29 @@ void Dubber::ReadVideoFrame(long lVStreamPos, BOOL preload) {
 
 	i64SegmentSize += 24;
 
-	pipe->postBuffer(lActualBytes, lVStreamPos,
-		(vSrc->isKey(lVStreamPos) ? 0 : 1)
+	display_frame = vSrc->streamToDisplayOrder(stream_frame);
+
+	pipe->postBuffer(lActualBytes, stream_frame, display_frame,
+		(vSrc->isKey(display_frame) ? 0 : 1)
 		+(preload ? 2 : 0),
 //		+((lVStreamPos % opt->video.frameRateDecimation) || preload ? 2 : 0),
+		vSrc->getDropType(display_frame),
 		handle);
 
 
 }
 
-void Dubber::ReadNullVideoFrame(long lVStreamPos) {
+void Dubber::ReadNullVideoFrame(long display_frame) {
 	void *buffer;
 	int handle;
 
 	buffer = pipe->getWriteBuffer(1, &handle, INFINITE);
 	if (!buffer) return;	// hmm, aborted...
 
-	pipe->postBuffer(0, lVStreamPos,
-		(vSrc->isKey(lVStreamPos) ? 0 : 1),
+	pipe->postBuffer(0, vSrc->displayToStreamOrder(display_frame), display_frame,
+		(vSrc->isKey(display_frame) ? 0 : 1),
 //		+((lVStreamPos % opt->video.frameRateDecimation)? 2 : 0),
+		vSrc->getDropType(display_frame),
 		handle);
 
 	i64SegmentSize += 24 + lVideoSizeEstimate;
@@ -2161,7 +2189,7 @@ long Dubber::ReadAudio(long& lAStreamPos, long samples) {
 		} while(samples && ltActualBytes);
 	}
 
-	pipe->postBuffer(lActualBytes, lActualSamples, -1, handle);
+	pipe->postBuffer(lActualBytes, lActualSamples, 0, -1, 0, handle);
 
 	aInfo.total_size += lActualBytes + 24;
 	i64SegmentSize += lActualBytes + 24;
@@ -2272,7 +2300,7 @@ void Dubber::CheckSpill(long videopt, long audiopt) {
 		// <seconds> * 1000000 / <microseconds per frame> = <frames>
 		// (<audio samples> * <audio bytes per sample> * 1000000) / (<audio bytes per second> * <microseconds per frame>) = <frames>
 
-		lFrame2 = int64divroundup((__int64)(audiopt - aInfo.start_src) * nBlockAlignMillion,
+		lFrame2 = (long)int64divroundup((__int64)(audiopt - aInfo.start_src) * nBlockAlignMillion,
 					nAvgBytesPerSecSpeed);
 
 		if (pInvTelecine)
@@ -2294,7 +2322,7 @@ void Dubber::CheckSpill(long videopt, long audiopt) {
 		//
 		// (<audio samples> = (<frames> * <audio bytes per second> * <microseconds per frame>) / (<audio bytes per sample> * 1000000);
 
-		lSample = int64divround((__int64)lFrame2 * nAvgBytesPerSecSpeed, nBlockAlignMillion);
+		lSample = (long)int64divround((__int64)lFrame2 * nAvgBytesPerSecSpeed, nBlockAlignMillion);
 	} else
 		lFrame2 = lFrame;
 
@@ -2397,7 +2425,7 @@ void Dubber::MainAddVideoFrame() {
 
 				if (!lSpillVideoPoint || vInfo.cur_src < lSpillVideoPoint) {
 					while(-1 != (f = vSrc->streamGetNextRequiredFrame(&is_preroll))) {
-						ReadVideoFrame(f, is_preroll && opt->video.mode>=DubVideoOptions::M_FASTREPACK);
+						ReadVideoFrame(f, lFrame, is_preroll && opt->video.mode>=DubVideoOptions::M_FASTREPACK);
 
 						fRead = TRUE;
 					}
@@ -2409,8 +2437,25 @@ void Dubber::MainAddVideoFrame() {
 				if (fEnableSpill)
 					CheckSpill(vInfo.cur_src + opt->video.frameRateDecimation, aInfo.cur_src);
 
-				if (!lSpillVideoPoint || vInfo.cur_src < lSpillVideoPoint)
-					ReadVideoFrame(lFrame, FALSE);
+				if (!lSpillVideoPoint || vInfo.cur_src < lSpillVideoPoint) {
+
+					// In DSC mode, we may not be able to copy the desired frames due to
+					// frame dependencies.  In that case, copy sequential frames from the
+					// last keyframe.
+
+					if (opt->video.frameRateDecimation > 1) {
+						long lKey = vSrc->nearestKey(lFrame);
+
+						if (lKey > mDSCLastVideoFrame)
+							mDSCLastVideoFrame = lKey;
+						else
+							++mDSCLastVideoFrame;
+
+						lFrame = mDSCLastVideoFrame;
+					}
+
+					ReadVideoFrame(lFrame, lFrame, FALSE);
+				}
 			}
 		} else {
 			// Flushing out the lag -- read a null frame.
@@ -2565,6 +2610,11 @@ void Dubber::MainThread() {
 					}
 			}
 		} catch(MyError e) {
+			if (!fError) {
+				err = e;
+				e.discard();
+				fError = true;
+			}
 			e.post(NULL, "Dub Error (will attempt to finalize)");
 		}
 
@@ -2637,11 +2687,74 @@ void Dubber::MainThread() {
 #define BUFFERID_OUTPUT (2)
 #define BUFFERID_PACKED (4)
 
-void Dubber::WriteVideoFrame(void *buffer, int exdata, LONG lastSize, long sample_num) {
+void Dubber::WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, long sample_num, long display_num) {
 	LONG dwBytes;
 	bool isKey;
 	void *frameBuffer;
 	LPVOID lpCompressedData;
+
+	// Preview fast drop -- if there is another keyframe in the pipe, we can drop
+	// all the frames to it without even decoding them!
+	//
+	// Anime song played during development of this feature: "Trust" from the
+	// Vandread OST.
+
+	if (fPreview && opt->perf.fDropFrames) {
+
+		// If audio is frozen, force frames to be dropped.
+
+		bool bDrop = !vSrc->isDecodable(sample_num);
+
+		if (mbAudioFrozen && mbAudioFrozenValid) {
+			bDrop = true;
+			lDropFrames = 1;
+		}
+
+		if (lDropFrames && !bDrop) {
+
+			// Attempt to drop a frame before the decoder.  Droppable frames (zero-byte
+			// or B-frames) can be dropped without any problem without question.  Dependant
+			// (P-frames or delta frames) and independent frames (I-frames or keyframes)
+			// should only be dropped if there is a reasonable expectation that another
+			// independent frame will arrive around the time that we want to stop dropping
+			// frames, since we'll basically kill decoding until then.
+
+			if (droptype == AVIPipe::kDroppable) {
+				bDrop = true;
+			} else {
+				int total, indep;
+
+				pipe->getDropDistances(total, indep);
+
+				// Do a blind drop if we know a keyframe will arrive within two frames.
+
+				if (indep == 0x3FFFFFFF && vSrc->nearestKey(display_num + opt->video.frameRateDecimation*2) > display_num)
+					indep = 0;
+
+				if (indep < lDropFrames) {
+					bDrop = true;
+				}
+			}
+		}
+
+		if (bDrop) {
+//			_RPT3(0, "Dropping: sample %d / display %d [%c]\n", sample_num, display_num, vSrc->getFrameTypeChar(display_num));
+
+			if (!(exdata&2)) {
+				blitter->nextFrame(opt->video.nPreviewFieldMode ? 2 : 1);
+				vInfo.cur_proc_src += opt->video.frameRateDecimation;
+			}
+			++fsi.lCurrentFrame;
+			if (lDropFrames)
+				--lDropFrames;
+
+			pStatusHandler->NotifyNewFrame(0);
+
+			return;
+		}
+
+//		_RPT3(0, "Displaying: sample %d / display %d [%c]\n", sample_num, display_num, vSrc->getFrameTypeChar(display_num));
+	}
 
 	// With Direct mode, write video data directly to output.
 
@@ -2685,7 +2798,7 @@ void Dubber::WriteVideoFrame(void *buffer, int exdata, LONG lastSize, long sampl
 
 	if (lDropFrames && fPreview) {
 		blitter->unlock(BUFFERID_INPUT);
-		blitter->nextFrame();
+		blitter->nextFrame(opt->video.nPreviewFieldMode ? 2 : 1);
 		vInfo.cur_proc_src += opt->video.frameRateDecimation;
 		++fsi.lCurrentFrame;
 		--lDropFrames;
@@ -2704,7 +2817,7 @@ void Dubber::WriteVideoFrame(void *buffer, int exdata, LONG lastSize, long sampl
 		VBitmap destbm;
 		long lInputFrameNum, lInputFrameNum2;
 
-		lInputFrameNum = sample_num - vSrc->lSampleFirst;
+		lInputFrameNum = display_num - vSrc->lSampleFirst;
 
 		if (pInvTelecine) {
 			lInputFrameNum2 = pInvTelecine->ProcessOut(initialBitmap);
@@ -2784,10 +2897,6 @@ void Dubber::WriteVideoFrame(void *buffer, int exdata, LONG lastSize, long sampl
 
 
 	if (fUseVideoCompression) {
-/*		if (!(lpCompressedData = ICSeqCompressFrame(compVars, 0, frameBuffer, 
-						&isKey, &dwBytes)))
-			throw MyError("Error compressing video data.");*/
-
 		if (hicOutput)
 			blitter->lock(BUFFERID_PACKED);
 
@@ -3017,7 +3126,6 @@ void Dubber::WriteVideoFrame(void *buffer, int exdata, LONG lastSize, long sampl
 	}
 
 //	guiSetStatus("Pulse clock: %ld\n", g_lPulseClock);
-
 	if (opt->perf.fDropFrames && fPreview) {
 		long lFrameDelta;
 
@@ -3026,16 +3134,17 @@ void Dubber::WriteVideoFrame(void *buffer, int exdata, LONG lastSize, long sampl
 		if (opt->video.nPreviewFieldMode)
 			lFrameDelta >>= 1;
 
-//		guiSetStatus("Pulse clock: %ld, Delta: %ld\n", g_lPulseClock, lFrameDelta);
+//		guiSetStatus("Pulse clock: %ld, Delta: %ld\n", 255, g_lPulseClock, lFrameDelta);
 
-		if (lFrameDelta < 1) lFrameDelta = 1;
+		if (lFrameDelta < 0) lFrameDelta = 0;
 		
-		if (lFrameDelta > 1) {
-			lDropFrames = lFrameDelta/2;
+		if (lFrameDelta > 0) {
+			lDropFrames = lFrameDelta;
 		}
 
 //		vInfo.cur_proc_src = opt->video.frameRateDecimation * lFrameDelta;
 	}
+
 
 	blitter->nextFrame(opt->video.nPreviewFieldMode ? 2 : 1);
 
@@ -3085,10 +3194,12 @@ void Dubber::ProcessingThread() {
 			void *buf;
 			long len;
 			long samples;
+			long dframe;
 			int exdata;
 			int handle;
+			int droptype;
 
-			while(!fAbort && (buf = pipe->getReadBuffer(&len, &samples, &exdata, &handle, 1000))) {
+			while(!fAbort && (buf = pipe->getReadBuffer(&len, &samples, &dframe, &exdata, &droptype, &handle, 1000))) {
 
 				CHECK_STACK(sp);
 
@@ -3098,6 +3209,7 @@ void Dubber::ProcessingThread() {
 						AVIout->audioOut->flush();
 						blitter->enablePulsing(TRUE);
 						firstPacket = FALSE;
+						mbAudioFrozen = false;
 
 						if (hicOutput)
 							ICDrawStart(hicOutput);
@@ -3108,7 +3220,12 @@ void Dubber::ProcessingThread() {
 						blitter->enablePulsing(TRUE);
 						firstPacket = FALSE;
 					}
-					WriteVideoFrame(buf, exdata, len, samples);
+					WriteVideoFrame(buf, exdata, droptype, len, samples, dframe);
+
+					if (fPreview) {
+						((AVIAudioPreviewOutputStream *)AVIout->audioOut)->start();
+						mbAudioFrozenValid = true;
+					}
 				}
 				pipe->releaseBuffer(handle);
 

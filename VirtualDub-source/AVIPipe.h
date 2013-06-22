@@ -32,8 +32,10 @@ private:
 		long	size;
 		long	len;
 		long	sample;
+		long	displayframe;
 		long	id;
 		int		iExdata;
+		int		droptype;
 	} *pBuffers;
 
 	int		num_buffers;
@@ -54,7 +56,15 @@ private:
 		SYNCPOINT_ACKNOWLEDGED	= 16,
 	};
 
+	// These are the same as in VideoSourceAVI
+
 public:
+	enum {
+		kDroppable=0,
+		kDependant,
+		kIndependent
+	};
+
 	AVIPipe(int buffers, long roundup_size);
 	~AVIPipe();
 
@@ -63,13 +73,14 @@ public:
 	BOOL isNoMoreAudio();
 
 	void *getWriteBuffer(long len, int *handle_ptr, DWORD timeout);
-	void postBuffer(long len, long samples, int exdata, int handle);
-	void *getReadBuffer(long *len_ptr, long *samples_ptr, int *exdata_ptr, int *handle_ptr, DWORD timeout);
+	void postBuffer(long len, long samples, long dframe, int exdata, int droptype, int handle);
+	void *getReadBuffer(long *len_ptr, long *samples_ptr, long *dframe_ptr, int *exdata_ptr, int *droptype_ptr, int *handle_ptr, DWORD timeout);
 	void releaseBuffer(int handle);
 	void finalize();
 	void abort();
 	bool sync();
 	void syncack();
+	void getDropDistances(int& dependant, int& independent);
 };
 
 #endif

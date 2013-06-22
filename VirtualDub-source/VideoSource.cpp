@@ -650,14 +650,14 @@ void VideoSourceAVI::Reinit() {
 	nOldFrames = lSampleLast - lSampleFirst;
 	nNewFrames = pAVIStream->End() - pAVIStream->Start();
 
-	if (mjpeg_splits) {
+	if (mjpeg_mode==IFMODE_SPLIT1 || mjpeg_mode==IFMODE_SPLIT2) {
 		nOldFrames >>= 1;
 	}
 
-	if (nOldFrames != nNewFrames && (mjpeg_mode==IFMODE_SPLIT1 || mjpeg_mode==IFMODE_SPLIT2)) {
+	if (nOldFrames != nNewFrames && mjpeg_mode) {
 		// We have to resize the mjpeg_splits array.
 
-		long *pNewSplits = new long[lSampleLast - lSampleFirst];
+		long *pNewSplits = new long[nNewFrames];
 
 		if (!pNewSplits)
 			throw MyMemoryError();
@@ -679,9 +679,8 @@ void VideoSourceAVI::Reinit() {
 
 	lSampleFirst = pAVIStream->Start();
 
-	if (mjpeg_splits) {
+	if (mjpeg_mode==IFMODE_SPLIT1 || mjpeg_mode==IFMODE_SPLIT2) {
 		streamInfo.dwRate *= 2;
-		streamInfo.dwLength *= 2;
 		lSampleLast = pAVIStream->End() * 2 - lSampleFirst;
 	} else
 		lSampleLast = pAVIStream->End();
@@ -1271,6 +1270,32 @@ char VideoSourceAVI::getFrameTypeChar(long lFrameNum) {
 	return lBytes ? ' ' : 'D';
 }
 
+VideoSource::eDropType VideoSourceAVI::getDropType(long lFrameNum) {
+	if (lFrameNum<lSampleFirst || lFrameNum >= lSampleLast)
+		return kDroppable;
+
+	if (_isKey(lFrameNum))
+		return kIndependent;
+
+	long lBytes, lSamples;
+	int err = _read(lFrameNum, 1, NULL, 0, &lBytes, &lSamples);
+
+	if (err != AVIERR_OK)
+		return kDependant;
+
+	return lBytes ? kDependant : kDroppable;
+}
+
+bool VideoSourceAVI::isDecodable(long sample_num) {
+	if (sample_num<lSampleFirst || sample_num >= lSampleLast)
+		return false;
+
+	if (isKey(sample_num))
+		return true;
+
+	return (sample_num >= lLastFrame && lLastFrame >= nearestKey(sample_num));
+}
+
 bool VideoSourceAVI::isStreaming() {
 	return pAVIStream->isStreaming();
 }
@@ -1404,6 +1429,8 @@ void *VideoSourceAVI::streamGetFrame(void *inputBuffer, LONG data_len, BOOL is_k
       DIBconvert(inputBuffer, getImageFormat(), getFrameBuffer(), getDecompressedFormat());
    }
 //		memcpy(getFrameBuffer(), inputBuffer, getDecompressedFormat()->biSizeImage);
+
+	lLastFrame = frame_num;
 
 	return getFrameBuffer();
 }

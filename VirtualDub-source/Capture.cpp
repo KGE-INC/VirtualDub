@@ -374,7 +374,7 @@ LRESULT CALLBACK CaptureHistoFrameCallback(HWND hWnd, VIDEOHDR *vhdr);
 LRESULT CALLBACK CaptureOverlayFrameCallback(HWND hWnd, VIDEOHDR *vhdr);
 static void CaptureToggleNRDialog(HWND);
 void CaptureShowClippingDialog(HWND hwndCapture);
-static void CaptureMoveWindow(HWND);
+static bool CaptureMoveWindow(HWND);
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -604,6 +604,13 @@ static void CaptureSetPreview(HWND hwndCapture, bool b) {
 	if (!b) {
 		RydiaEnableAVICapPreview(false);
 		g_bCaptureDDrawActive = false;
+
+		if (g_pHistogram) {
+			delete g_pHistogram;
+			g_pHistogram = NULL;
+			InvalidateRect(GetParent(hwndCapture), NULL, TRUE);
+		}
+
 		capPreview(hwndCapture, FALSE);
 		g_DDContext.DestroyOverlay();
 	} else {
@@ -619,10 +626,18 @@ static void CaptureSetPreview(HWND hwndCapture, bool b) {
 						if (capGetVideoFormat(hwndCapture, bih, fsize)) {
 							if (g_DDContext.CreateOverlay(bih->biWidth, g_nCaptureDDraw==kDDP_Both ? bih->biHeight : bih->biHeight/2, bih->biBitCount, bih->biCompression)) {
 								g_bCaptureDDrawActive = true;
-								RydiaInitAVICapHotPatch();
-								RydiaEnableAVICapPreview(true);
-								CaptureMoveWindow(hwndCapture);
-								capSetCallbackOnFrame(hwndCapture, CaptureOverlayFrameCallback);
+
+								// Try showing the window.  We may not be able to if the
+								// overlay is already in use (ATI with integrated capture).
+
+								if (CaptureMoveWindow(hwndCapture)) {
+									RydiaInitAVICapHotPatch();
+									RydiaEnableAVICapPreview(true);
+									capSetCallbackOnFrame(hwndCapture, CaptureOverlayFrameCallback);
+								} else {
+									g_DDContext.DestroyOverlay();
+									g_bCaptureDDrawActive = false;
+								}
 							}
 						}
 						freemem(bih);
@@ -674,9 +689,9 @@ static void CaptureExitSlowPeriod(HWND hwnd) {
 	CaptureBT848Reassert();
 }
 
-static void CaptureMoveWindow(HWND hwnd) {
+static bool CaptureMoveWindow(HWND hwnd) {
 	if (!g_bCaptureDDrawActive)
-		return;
+		return false;
 
 	RECT r;
 
@@ -684,7 +699,7 @@ static void CaptureMoveWindow(HWND hwnd) {
 	ClientToScreen(hwnd, (LPPOINT)&r+0);
 	ClientToScreen(hwnd, (LPPOINT)&r+1);
 
-	g_DDContext.PositionOverlay(r.left, r.top, r.right-r.left, r.bottom-r.top);
+	return g_DDContext.PositionOverlay(r.left, r.top, r.right-r.left, r.bottom-r.top);
 }
 
 static void CaptureResizeWindow(HWND hWnd) {
@@ -2686,7 +2701,10 @@ static BITMAPINFOHEADER *CaptureInitFiltering(CaptureData *icd, BITMAPINFOHEADER
 			if (bihInput->biCompression == 'YUYV' && bihInput->biBitCount == 16)
 				break;
 
-			throw MyError("Noise reduction is only supported for 24-bit RGB, 32-bit RGB, and 16-bit 4:2:2 YUV (YUY2/VYUY).");
+			if (bihInput->biCompression == 'YVYU' && bihInput->biBitCount == 16)
+				break;
+
+			throw MyError("Noise reduction is only supported for 24-bit RGB, 32-bit RGB, and 16-bit 4:2:2 YUV (YUY2/UYVY/VYUY).");
 
 		} while(false);
 

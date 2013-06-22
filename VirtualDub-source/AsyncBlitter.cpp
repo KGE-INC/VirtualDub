@@ -1039,8 +1039,9 @@ bool AsyncBlitter::ServiceRequests(bool fWait) {
 			if (req->type == AsyncBlitRequest::REQTYPE_AFC)
 				DoRequest(req);
 			else if (!fWait || !waitPulse(req->framenum)) {
-				if (dwPulseFrame < req->framenum)
+				if (dwPulseFrame < req->framenum) {
 					continue;
+				}
 
 				if (DoRequest(req)) {
 					++req->framenum;

@@ -52,8 +52,6 @@
 //#define STATISTICS
 #endif
 
-#define DCT_POSITION_CHECKING
-
 //#define MB_STATS
 //#define MB_SPLIT_STATS
 
@@ -677,12 +675,12 @@ static void video_process_picture_start_packet(char *ptr) {
 	switch(frame_type) {
 	case I_FRAME:		// I-frames have no prediction
 		mpeg_set_destination_buffer(MPEG_BUFFER_BACKWARD);
-//		_RPT1(0,"Processing I-frame (#%d)\n", temp_rf);
+		_RPT1(0,"Processing I-frame (#%d)\n", temp_rf);
 		break;
 
 	case P_FRAME:		// P-frames predict back to the last I or P
 		mpeg_set_destination_buffer(MPEG_BUFFER_BACKWARD);
-//		_RPT2(0,"Processing P-frame (#%d) (forward: %ld)\n", temp_rf, buffers[MPEG_BUFFER_FORWARD].frame_num);
+		_RPT2(0,"Processing P-frame (#%d) (forward: %ld)\n", temp_rf, buffers[MPEG_BUFFER_FORWARD].frame_num);
 
 		Y_forw = buffers[MPEG_BUFFER_FORWARD].Y;
 		U_forw = buffers[MPEG_BUFFER_FORWARD].U;
@@ -691,7 +689,7 @@ static void video_process_picture_start_packet(char *ptr) {
 
 	case B_FRAME:		// B-frames predict back to the last I or P and forward to the next P
 		mpeg_set_destination_buffer(MPEG_BUFFER_BIDIRECTIONAL);
-//		_RPT3(0,"Processing B-frame (#%d) (f: %ld  b: %ld)\n", temp_rf, buffers[MPEG_BUFFER_BACKWARD].frame_num, buffers[MPEG_BUFFER_FORWARD].frame_num);
+		_RPT3(0,"Processing B-frame (#%d) (f: %ld  b: %ld)\n", temp_rf, buffers[MPEG_BUFFER_BACKWARD].frame_num, buffers[MPEG_BUFFER_FORWARD].frame_num);
 		Y_back = buffers[MPEG_BUFFER_FORWARD].Y;
 		U_back = buffers[MPEG_BUFFER_FORWARD].U;
 		V_back = buffers[MPEG_BUFFER_FORWARD].V;
@@ -904,6 +902,9 @@ MB_DECLARE_STAT(st_first_long);
 					level_sign = -1;
 				}
 
+				if (!level)
+					goto conceal_error;
+
 				MB_STAT_INC(st_escape);
 
 			} else if (v >= 0x020) {
@@ -926,7 +927,11 @@ MB_DECLARE_STAT(st_first_long);
 
 				bits.skip(7);
 				v = bits.peek(10);
-				t = v>>1;
+				t = (v>>1)-16;
+
+				if (t<0)
+					goto conceal_error;
+
 				bcnt = mpeg_dct_coeff_decode2[t*4+2];
 				idx += mpeg_dct_coeff_decode2[t*4+0]+1;
 				level = mpeg_dct_coeff_decode2[t*4+1];
@@ -941,12 +946,12 @@ MB_DECLARE_STAT(st_first_long);
 
 		++coeff_count;
 
-#ifdef DCT_POSITION_CHECKING
 		if (idx >= zigzag+64) {
-			pos = 63;
+conceal_error:
+			pos = 0;
+			memset(dct_coeff+1, 0, 63*sizeof(dct_coeff[0]));
 			break;
 		}
-#endif
 
 		pos = *idx;
 
@@ -1185,6 +1190,9 @@ static void decode_mblock_MMX(YUVPixel *dst, long modulo, long DC_val) {
 					level_sign = -1;
 				}
 
+				if (!level)
+					goto conceal_error;
+
 				MB_STAT_INC(st_escape);
 
 			} else if (PREDICT(020, v >= 0x02000000)) {
@@ -1208,13 +1216,15 @@ static void decode_mblock_MMX(YUVPixel *dst, long modulo, long DC_val) {
 
 				bits.skipconst(7);
 				v = bits.peek(10);
-				t = v>>1;
+				t = (v>>1) - 16;
+
+				if (t<0)
+					goto conceal_error;
+
 				bcnt = mpeg_dct_coeff_decode2[t*4+2];
 				idx += mpeg_dct_coeff_decode2[t*4+0]+1;
 				level = mpeg_dct_coeff_decode2[t*4+1];
 				bits.skip(bcnt);
-
-				_ASSERT(level != 0);
 
 //				if (v & (0x400>>bcnt))
 //					level_sign = -1;
@@ -1222,12 +1232,14 @@ static void decode_mblock_MMX(YUVPixel *dst, long modulo, long DC_val) {
 			}
 		}
 
-#ifdef DCT_POSITION_CHECKING
 		if (idx >= zigzag_MMX+64) {
-			pos = 63;
+			// Error concealment: clear all but the first DC coefficent.
+
+conceal_error:
+			pos = 0;
+			memset(coeff+1, 0, 63*sizeof(coeff[0]));
 			break;
 		}
-#endif
 
 		pos = *idx;
 
@@ -1971,6 +1983,18 @@ extern "C" void asm_YUVtoRGB32_row(
 		long width
 		);
 
+extern "C" void asm_YUVtoRGB32hq_row_ISSE(
+		unsigned long *ARGB1_pointer,
+		unsigned long *ARGB2_pointer,
+		YUVPixel *Y1_pointer,
+		YUVPixel *Y2_pointer,
+		YUVPixel *U_pointer,
+		YUVPixel *V_pointer,
+		long width,
+		long uv_up,
+		long uv_down
+		);
+
 extern "C" void asm_YUVtoRGB24_row(
 		unsigned long *ARGB1_pointer,
 		unsigned long *ARGB2_pointer,
@@ -1994,7 +2018,12 @@ extern "C" void asm_YUVtoRGB16_row(
 static void YUVToRGB32(YUVPixel *Y_ptr, YUVPixel *U_ptr, YUVPixel *V_ptr, unsigned char *dst, long bpr, long w, long h) {
 	dst = dst + bpr * (2*h - 2);
 
+//#pragma warning("don't ship with this!!!!!!");
+
+	long h0 = h;
+
 	do {
+#if 1
 		asm_YUVtoRGB32_row(
 				(unsigned long *)(dst + bpr),
 				(unsigned long *)dst,
@@ -2003,6 +2032,19 @@ static void YUVToRGB32(YUVPixel *Y_ptr, YUVPixel *U_ptr, YUVPixel *V_ptr, unsign
 				U_ptr,
 				V_ptr,
 				w);
+#else
+		asm_YUVtoRGB32hq_row_ISSE(
+				(unsigned long *)(dst + bpr),
+				(unsigned long *)dst,
+				Y_ptr,
+				Y_ptr + y_pitch,
+				U_ptr,
+				V_ptr,
+				w,
+				h0==h ? 0 : -uv_pitch,
+				h==1 ? 0 : uv_pitch
+				);
+#endif
 
 		dst = dst - 2*bpr;
 		Y_ptr = Y_ptr + 2*y_pitch;

@@ -1597,6 +1597,11 @@ terminate_scan:
 		if (pasn->hdr.fccType == streamtypeVIDEO)
 			pasn->hdr.dwSampleSize=0;
 
+		// Sample size == nBlockAlign for audio
+
+		if (pasn->hdr.fccType == streamtypeAUDIO)
+			pasn->hdr.dwSampleSize = ((WAVEFORMATEX *)pasn->pFormat)->nBlockAlign;
+
 		if (pasn->hdr.dwSampleSize)
 			pasn->length = (long)pasn->bytes / pasn->hdr.dwSampleSize;
 		else

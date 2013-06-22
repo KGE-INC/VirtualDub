@@ -473,6 +473,18 @@ static const char op_xchg	[]="xchg";
 static const char op_xlat	[]="xlat";
 static const char op_xor	[]="xor";
 
+// Pentium III (KNI) integer instructions
+
+static const char op_pavgb		[]="pavgb";
+static const char op_pavgw		[]="pavgw";
+static const char op_pmaxsw		[]="pmaxsw";
+static const char op_pmaxub		[]="pmaxub";
+static const char op_pminsw		[]="pminsw";
+static const char op_pminub		[]="pminub";
+static const char op_pmulhuw	[]="pmulhuw";
+static const char op_psadbw		[]="psadbw";
+static const char op_pshufw		[]="pshufw";
+
 // AMD 3DNow! instructions
 
 static const char op_femms		[]="femms";
@@ -874,7 +886,7 @@ static const struct x86op prefix0f_ops[]={
 /* 6d */	NULL,			0,
 /* 6e */	op_movd,		ADDR2(ADDR_Pd,ADDR_Ed),
 /* 6f */	op_movq,		ADDR2(ADDR_Pq,ADDR_Qq),
-/* 70 */	NULL,			0,
+/* 70 */	op_pshufw,		ADDR3(ADDR_Pq,ADDR_Qq,ADDR_Ib),
 /* 71 */	NULL,			GROUP(10),
 /* 72 */	NULL,			GROUP(11),
 /* 73 */	NULL,			GROUP(12),
@@ -975,48 +987,48 @@ static const struct x86op prefix0f_ops[]={
 /* d2 */	op_psrld,		ADDR2(ADDR_Pq,ADDR_Qd),
 /* d3 */	op_psrlq,		ADDR2(ADDR_Pq,ADDR_Qd),
 /* d4 */	NULL,			0,
-/* d5 */	op_pmullw,		ADDR2(ADDR_Pq,ADDR_Qd),
+/* d5 */	op_pmullw,		ADDR2(ADDR_Pq,ADDR_Qq),
 /* d6 */	NULL,			0,
 /* d7 */	NULL,			0,
 /* d8 */	op_psubusb,		ADDR2(ADDR_Pq,ADDR_Qq),
 /* d9 */	op_psubusw,		ADDR2(ADDR_Pq,ADDR_Qq),
-/* da */	NULL,			0,
+/* da */	op_pminub,		ADDR2(ADDR_Pq,ADDR_Qq),
 /* db */	op_pand,		ADDR2(ADDR_Pq,ADDR_Qq),
 /* dc */	op_paddusb,		ADDR2(ADDR_Pq,ADDR_Qq),
 /* dd */	op_paddusw,		ADDR2(ADDR_Pq,ADDR_Qq),
-/* de */	NULL,			0,
+/* de */	op_pmaxub,		ADDR2(ADDR_Pq,ADDR_Qq),
 /* df */	op_pandn,		ADDR2(ADDR_Pq,ADDR_Qq),
-/* e0 */	NULL,			0,
+/* e0 */	op_pavgb,		ADDR2(ADDR_Pq,ADDR_Qq),
 /* e1 */	op_psraw,		ADDR2(ADDR_Pq,ADDR_Qd),
 /* e2 */	op_psrad,		ADDR2(ADDR_Pq,ADDR_Qd),
-/* e3 */	NULL,			0,
-/* e4 */	NULL,			0,
-/* e5 */	op_pmulhw,		ADDR2(ADDR_Pq,ADDR_Qd),
+/* e3 */	op_pavgw,		ADDR2(ADDR_Pq,ADDR_Qq),
+/* e4 */	op_pmulhuw,		ADDR2(ADDR_Pq,ADDR_Qq),
+/* e5 */	op_pmulhw,		ADDR2(ADDR_Pq,ADDR_Qq),
 /* e6 */	NULL,			0,
 /* e7 */	NULL,			0,
-/* e8 */	op_psubsb,		ADDR2(ADDR_Pq,ADDR_Qd),
-/* e9 */	op_psubsw,		ADDR2(ADDR_Pq,ADDR_Qd),
-/* ea */	NULL,			0,
-/* eb */	op_por,			ADDR2(ADDR_Pq,ADDR_Qd),
-/* ec */	op_paddsb,		ADDR2(ADDR_Pq,ADDR_Qd),
-/* ed */	op_paddsw,		ADDR2(ADDR_Pq,ADDR_Qd),
-/* ee */	NULL,			0,
-/* ef */	op_pxor,		ADDR2(ADDR_Pq,ADDR_Qd),
+/* e8 */	op_psubsb,		ADDR2(ADDR_Pq,ADDR_Qq),
+/* e9 */	op_psubsw,		ADDR2(ADDR_Pq,ADDR_Qq),
+/* ea */	op_pminsw,		ADDR2(ADDR_Pq,ADDR_Qq),
+/* eb */	op_por,			ADDR2(ADDR_Pq,ADDR_Qq),
+/* ec */	op_paddsb,		ADDR2(ADDR_Pq,ADDR_Qq),
+/* ed */	op_paddsw,		ADDR2(ADDR_Pq,ADDR_Qq),
+/* ee */	op_pmaxsw,		ADDR2(ADDR_Pq,ADDR_Qq),
+/* ef */	op_pxor,		ADDR2(ADDR_Pq,ADDR_Qq),
 /* f0 */	NULL,			0,
 /* f1 */	op_psllw,		ADDR2(ADDR_Pq,ADDR_Qd),
 /* f2 */	op_pslld,		ADDR2(ADDR_Pq,ADDR_Qd),
 /* f3 */	op_psllq,		ADDR2(ADDR_Pq,ADDR_Qd),
 /* f4 */	NULL,			0,
-/* f5 */	op_pmaddwd,		ADDR2(ADDR_Pq,ADDR_Qd),
-/* f6 */	NULL,			0,
+/* f5 */	op_pmaddwd,		ADDR2(ADDR_Pq,ADDR_Qq),
+/* f6 */	op_psadbw,		ADDR2(ADDR_Pq,ADDR_Qq),
 /* f7 */	NULL,			0,
-/* f8 */	op_psubb,		ADDR2(ADDR_Pq,ADDR_Qd),
-/* f9 */	op_psubw,		ADDR2(ADDR_Pq,ADDR_Qd),
-/* fa */	op_psubd,		ADDR2(ADDR_Pq,ADDR_Qd),
+/* f8 */	op_psubb,		ADDR2(ADDR_Pq,ADDR_Qq),
+/* f9 */	op_psubw,		ADDR2(ADDR_Pq,ADDR_Qq),
+/* fa */	op_psubd,		ADDR2(ADDR_Pq,ADDR_Qq),
 /* fb */	NULL,			0,
-/* fc */	op_paddb,		ADDR2(ADDR_Pq,ADDR_Qd),
-/* fd */	op_paddw,		ADDR2(ADDR_Pq,ADDR_Qd),
-/* fe */	op_paddd,		ADDR2(ADDR_Pq,ADDR_Qd),
+/* fc */	op_paddb,		ADDR2(ADDR_Pq,ADDR_Qq),
+/* fd */	op_paddw,		ADDR2(ADDR_Pq,ADDR_Qq),
+/* fe */	op_paddd,		ADDR2(ADDR_Pq,ADDR_Qq),
 /* ff */	NULL,			0,
 };
 

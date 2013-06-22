@@ -32,7 +32,7 @@ void JobAddConfiguration(const DubOptions *, const char *szFileInput, int iFileM
 void JobWriteConfiguration(FILE *f, DubOptions *);
 void JobLockDubber();
 void JobUnlockDubber();
-void JobPositionCallback(LONG start, LONG cur, LONG end);
+void JobPositionCallback(LONG start, LONG cur, LONG end, int progress);
 void JobClearList();
 void JobRunList();
 void JobAddBatchDirectory(const char *srcDir, const char *dstDir);

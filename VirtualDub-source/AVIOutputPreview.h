@@ -38,6 +38,7 @@ public:
 	BOOL finalize();
 	BOOL flush();
 	long getPosition();
+	long getAvailable();
 	bool isFrozen();
 	BOOL isSilent();
 	void stop();

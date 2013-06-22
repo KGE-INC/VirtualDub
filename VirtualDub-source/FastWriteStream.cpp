@@ -21,6 +21,8 @@
 
 #include <windows.h>
 
+#include "cpuaccel.h"
+
 #include "Error.h"
 
 #include "FastWriteStream.h"

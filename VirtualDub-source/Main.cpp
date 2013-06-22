@@ -366,7 +366,9 @@ void DisplayFrame(HWND hWnd, LONG pos, bool bDispInput=true) {
 				pos = inputVideoAVI->lSampleLast;
 		}
 
-		if (s_nLastFrame != pos || !inputVideoAVI->isFrameBufferValid()) {
+		bool bShowOutput = !g_sceneShuttleMode && !g_dubber && g_dubOpts.video.fShowOutputFrame;
+
+		if (s_nLastFrame != pos || !inputVideoAVI->isFrameBufferValid() || (bShowOutput && !filters.isRunning())) {
 
 			s_nLastFrame = pos;
 
@@ -379,9 +381,11 @@ void DisplayFrame(HWND hWnd, LONG pos, bool bDispInput=true) {
 				VBitmap *out;
 
 				VDCHECKPOINT;
+				CHECK_FPU_STACK
 
 				lpBits = inputVideoAVI->getFrame(pos);
 
+				CHECK_FPU_STACK
 				VDCHECKPOINT;
 
 				if (!lpBits)
@@ -401,7 +405,7 @@ void DisplayFrame(HWND hWnd, LONG pos, bool bDispInput=true) {
 
 				VDCHECKPOINT;
 
-				if (!g_sceneShuttleMode && !g_dubber && g_dubOpts.video.fShowOutputFrame) {
+				if (bShowOutput) {
 					if (!filters.isRunning()) {
 						CPUTest();
 						filters.initLinearChain(&g_listFA, (Pixel *)(dcf+1), dcf->biWidth, dcf->biHeight, 32, 16+8*g_dubOpts.video.outputDepth);
@@ -493,7 +497,7 @@ void MenuMRUListUpdate(HWND hwnd) {
 	char name[MAX_PATH], name2[MAX_PATH];
 	int index=0;
 
-#define WIN95_MENUITEMINFO_SIZE (offsetof(MENUITEMINFO, hbmpItem))
+#define WIN95_MENUITEMINFO_SIZE (offsetof(MENUITEMINFO, cch) + sizeof(UINT))
 
 	memset(&mii, 0, sizeof mii);
 	mii.cbSize	= WIN95_MENUITEMINFO_SIZE;
@@ -1486,8 +1490,8 @@ LONG APIENTRY MainWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam)
 							dubOpt->audio.preload = preload;
 
 						dubOpt->audio.enabled				= TRUE;
-						dubOpt->audio.interval				= 250;
-						dubOpt->audio.is_ms					= TRUE;
+						dubOpt->audio.interval				= 1;
+						dubOpt->audio.is_ms					= FALSE;
 						dubOpt->video.lStartOffsetMS		= inputVideoAVI->samplesToMs(lStart);
 
 						if (HIWORD(wParam) != PCN_PLAYPREVIEW) {
@@ -2475,11 +2479,11 @@ void PreviewAVI(HWND hWnd, DubOptions *quick_options, int iPriority, bool fProp)
 
 		InitDubAVI(NULL, FALSE, quick_options, iPriority, fProp, 0, 0);
 
-		g_dubOpts.audio.enabled = FALSE;
+		g_dubOpts.audio.enabled = bPreview;
 	}
 }
 
-void PositionCallback(LONG start, LONG cur, LONG end) {
+void PositionCallback(LONG start, LONG cur, LONG end, int progress) {
 	SendMessage(GetDlgItem(g_hWnd, IDC_POSITION), PCM_SETPOS, 0, cur);
 }
 

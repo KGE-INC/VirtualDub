@@ -34,6 +34,6 @@ extern const char			mpeg_motion_code_decode[96*2];
 extern const char			mpeg_motion_code_decode2[58*2];
 extern const unsigned char	mpeg_dct_coeff_decode0[88*4];
 extern const unsigned char	mpeg_dct_coeff_decode1[8*2];
-extern const unsigned char	mpeg_dct_coeff_decode2[512*4];
+extern const unsigned char	mpeg_dct_coeff_decode2[496*4];
 
 #endif

@@ -104,6 +104,8 @@ public:
 
 	long _Read(void *buffer, long max_samples, long *lplBytes);
 	BOOL _isEnd();
+
+	bool Skip(long);
 };
 
 class AudioStreamResampler : public AudioStream {
@@ -201,6 +203,7 @@ public:
 
 	long _Read(void *buffer, long max_samples, long *lplBytes);
 	BOOL _isEnd();
+	bool Skip(long);
 };
 
 long AudioTranslateVideoSubset(FrameSubset& dst, FrameSubset& src, long usPerFrame, WAVEFORMATEX *pwfex);

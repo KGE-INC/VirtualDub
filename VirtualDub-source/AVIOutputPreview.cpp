@@ -136,7 +136,11 @@ BOOL AVIAudioPreviewOutputStream::finalize() {
 }
 
 long AVIAudioPreviewOutputStream::getPosition() {
-	return myAudioOut ? myAudioOut->position() : 0;
+	return myAudioOut ? myAudioOut->position() : -1;
+}
+
+long AVIAudioPreviewOutputStream::getAvailable() {
+	return myAudioOut ? myAudioOut->avail() : -1;
 }
 
 bool AVIAudioPreviewOutputStream::isFrozen() {
@@ -146,7 +150,6 @@ bool AVIAudioPreviewOutputStream::isFrozen() {
 /////////////////////////////
 
 BOOL AVIVideoPreviewOutputStream::write(LONG dwIndexFlags, LPVOID lpBuffer, LONG cbBuffer, LONG lSamples) {
-	((AVIAudioPreviewOutputStream *)output->audioOut)->start();
 	return TRUE;
 }
 

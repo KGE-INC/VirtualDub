@@ -18,7 +18,7 @@
 #ifndef f_DUBSTATUS_H
 #define f_DUBSTATUS_H
 
-typedef void (*DubPositionCallback)(LONG start_pos, LONG cur_pos, LONG end_pos);
+typedef void (*DubPositionCallback)(LONG start_pos, LONG cur_pos, LONG end_pos, int nProgress);
 
 class DubAudioStreamInfo;
 class DubVideoStreamInfo;

@@ -473,10 +473,8 @@ bool RydiaDirectDrawContext::CreateOverlay(int w, int h, int bitcount, DWORD fcc
 
 			if (SUCCEEDED(hr)) {
 				DDCOLORKEY ddck;
-				DDPIXELFORMAT ddpf;
+				DDPIXELFORMAT ddpf={sizeof(DDPIXELFORMAT)};
 				mnColorKey = -1;
-
-				ddpf.dwSize = sizeof(DDPIXELFORMAT);
 
 				if (mbSupportsColorKey && SUCCEEDED(mpddsPrimary->GetPixelFormat(&ddpf)) && (ddpf.dwFlags & DDPF_RGB)) {
 					mnColorKey = ddpf.dwGBitMask | ddpf.dwBBitMask;
@@ -487,6 +485,9 @@ bool RydiaDirectDrawContext::CreateOverlay(int w, int h, int bitcount, DWORD fcc
 					if (FAILED(mpddsPrimary->SetColorKey(DDCKEY_DESTOVERLAY, &ddck)))
 						mnColorKey = -1;
 				}
+
+				mnWidth = w;
+				mnHeight = h;
 
 				return true;
 			}
@@ -513,7 +514,7 @@ void RydiaDirectDrawContext::DestroyOverlay() {
 bool RydiaDirectDrawContext::PositionOverlay(int x, int y, int w, int h) {
 	RECT r;
 	DWORD dwFlags = DDOVER_SHOW;
-	DDOVERLAYFX ddof;
+	DDOVERLAYFX ddof={sizeof(DDOVERLAYFX)};
 
 	if (!mpddsOverlay)
 		return false;
@@ -522,7 +523,6 @@ bool RydiaDirectDrawContext::PositionOverlay(int x, int y, int w, int h) {
 		dwFlags |= DDOVER_KEYDEST;
 
 	if (mbSupportsArithStretchY) {
-		ddof.dwSize = sizeof(DDOVERLAYFX);
 		ddof.dwDDFX = DDOVERFX_ARITHSTRETCHY;
 		dwFlags |= DDOVER_DDFX;
 	}
@@ -543,9 +543,7 @@ bool RydiaDirectDrawContext::PositionOverlay(int x, int y, int w, int h) {
 
 bool RydiaDirectDrawContext::LockAndLoad(const void *src0, int yoffset, int yskip) {
 	HRESULT hr;
-	DDSURFACEDESC ddsd;
-
-	ddsd.dwSize = sizeof ddsd;
+	DDSURFACEDESC ddsd={sizeof(DDSURFACEDESC)};
 
 	for(;;) {
 		hr = mpddsOverlay->Lock(NULL, &ddsd, DDLOCK_WAIT | DDLOCK_WRITEONLY | DDLOCK_SURFACEMEMORYPTR | DDLOCK_NOSYSLOCK, NULL);
@@ -569,12 +567,12 @@ bool RydiaDirectDrawContext::LockAndLoad(const void *src0, int yoffset, int yski
 	const char *src = (const char *)src0;
 	char *dst = (char *)ddsd.lpSurface;
 	long dpitch = ddsd.lPitch;
-	long spitch = ((nOverlayBPP * ddsd.dwWidth + 31) >> 5)*4;
-	long len = (nOverlayBPP * ddsd.dwWidth)>>3;
+	long spitch = ((nOverlayBPP * mnWidth + 31) >> 5)*4;
+	long len = (nOverlayBPP * mnWidth)>>3;
 
 	src += spitch*yoffset;
 
-	for(int y=0; y<ddsd.dwHeight; ++y) {
+	for(int y=0; y<mnHeight; ++y) {
 		memcpy(dst, src, len);
 		dst += dpitch;
 		src += spitch*yskip;

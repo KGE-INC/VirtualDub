@@ -630,7 +630,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Sans Serif"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,229,50,14
-    LTEXT           "VirtualDub 1.4.5 - Copyright (C) 1998-2001 by Avery Lee, All Rights Reserved.\nCompiled with MS Visual C++ 6.0 SP5 + Processor Pack\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
+    LTEXT           "VirtualDub 1.4.6 - Copyright (C) 1998-2001 by Avery Lee, All Rights Reserved.\nCompiled with MS Visual C++ 6.0 SP5 + Processor Pack\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",
                     IDC_STATIC,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,
                     238,8
@@ -1290,10 +1290,10 @@ BEGIN
     CONTROL         "Split interlaced frames into two fields (swapped) and double framerate",
                     IDC_IF_SPLITSWAP,"Button",BS_AUTORADIOBUTTON,19,152,233,
                     10
-    CONTROL         "Discard first frame",IDC_IF_DISCARDFIRST,"Button",
-                    BS_AUTORADIOBUTTON,19,162,72,10
-    CONTROL         "Discard second frame",IDC_IF_DISCARDSECOND,"Button",
-                    BS_AUTORADIOBUTTON,19,172,85,10
+    CONTROL         "Discard first field",IDC_IF_DISCARDFIRST,"Button",
+                    BS_AUTORADIOBUTTON,19,162,67,10
+    CONTROL         "Discard second field",IDC_IF_DISCARDSECOND,"Button",
+                    BS_AUTORADIOBUTTON,19,172,80,10
     CONTROL         "Swap fields",IDC_IF_SWAP,"Button",BS_AUTORADIOBUTTON,19,
                     182,52,10
     PUSHBUTTON      "OK",IDCANCEL,113,205,50,14
@@ -2072,7 +2072,7 @@ END
 
 IDD_LICENSE DIALOG DISCARDABLE  0, 0, 420, 271
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "GNU General Purpose License"
+CAPTION "GNU General Public License"
 FONT 8, "MS Sans Serif"
 BEGIN
     DEFPUSHBUTTON   "OK",IDCANCEL,187,250,50,14
@@ -3122,8 +3122,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,4,4,12667
- PRODUCTVERSION 1,4,4,12667
+ FILEVERSION 1,4,6,0
+ PRODUCTVERSION 1,4,6,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x29L
@@ -3141,14 +3141,14 @@ BEGIN
             VALUE "Comments", "Await the rebirth of the Phoenix.\0"
             VALUE "CompanyName", "Please suggest one.  I haven't come up with a good one yet.\0"
             VALUE "FileDescription", "VirtualDub video processing tool\0"
-            VALUE "FileVersion", "1.4.5\0"
+            VALUE "FileVersion", "1.4.6\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1999-2001 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "Naah, I don't like them.\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "Private builds are ones that don't work.\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.4.5\0"
+            VALUE "ProductVersion", "1.4.6\0"
             VALUE "SpecialBuild", "Optimized release build\0"
         END
     END
@@ -3184,14 +3184,14 @@ BEGIN
             VALUE "Comments", "Anime songs for this build:\r\n\r\nOpening theme for Natsuki Crisis\r\n\r\n""Watasi ni Happy Birthday"" from Cat Girl Nuku Nuku\r\n\r\n""Change the World"" from Inuyasha\0"
             VALUE "CompanyName", "Please suggest one.  I haven't come up with a good one yet.\0"
             VALUE "FileDescription", "VirtualDub MPEG/AVI-to-AVI processing tool\0"
-            VALUE "FileVersion", "1.4.5\0"
+            VALUE "FileVersion", "1.4.6\0"
             VALUE "InternalName", "VirtualDub\0"
             VALUE "LegalCopyright", "Copyright © 1999, 2000 by Avery Lee, All Rights Reserved.\0"
             VALUE "LegalTrademarks", "Naah, I don't like them.\0"
             VALUE "OriginalFilename", "VirtualDub.exe\0"
             VALUE "PrivateBuild", "Private builds are the ones that don't work.\0"
             VALUE "ProductName", "VirtualDub\0"
-            VALUE "ProductVersion", "1.4.5\0"
+            VALUE "ProductVersion", "1.4.6\0"
             VALUE "SpecialBuild", "Debug build (i.e. big, fat, and slow)\0"
         END
     END
@@ -3234,17 +3234,17 @@ IDI_POS_SCENEREV        ICON    DISCARDABLE     "scenerev.ico"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.4.5 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.4.5"
-    IDS_TITLE_IDLE          "VirtualDub 1.4.5 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.4.5 - [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.4.5"
+    IDS_TITLE_INITIAL       "VirtualDub 1.4.6 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.4.6"
+    IDS_TITLE_IDLE          "VirtualDub 1.4.6 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.4.6 - [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.4.6"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.4.5 - serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.4.5 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.4.5 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.4.5 - capture mode [%s] (striped)%s"
-    IDS_TITLE_IDLE2         "VirtualDub 1.4.5 - [%s] (%s)"
+    IDS_TITLE_SERVING       "VirtualDub 1.4.6 - serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.4.6 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.4.6 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.4.6 - capture mode [%s] (striped)%s"
+    IDS_TITLE_IDLE2         "VirtualDub 1.4.6 - [%s] (%s)"
 END
 
 STRINGTABLE DISCARDABLE 

@@ -1650,12 +1650,12 @@ void JobUnlockDubber() {
 	}
 }
 
-void JobPositionCallback(LONG start, LONG cur, LONG end) {
+void JobPositionCallback(LONG start, LONG cur, LONG end, int progress) {
 	char buf[8];
 
 	if (g_hwndJobs) {
-		SendMessage(GetDlgItem(g_hwndJobs, IDC_PROGRESS), PBM_SETPOS, MulDiv(cur, 16384, end-start), 0);
-		wsprintf(buf, "%d%%", MulDiv(cur, 100, end-start));
+		SendMessage(GetDlgItem(g_hwndJobs, IDC_PROGRESS), PBM_SETPOS, progress*2, 0);
+		wsprintf(buf, "%d%%", MulDiv(progress, 100, 8192));
 		SetDlgItemText(g_hwndJobs, IDC_PERCENT, buf);
 	}
 }
