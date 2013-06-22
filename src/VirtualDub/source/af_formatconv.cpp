@@ -167,7 +167,7 @@ extern const struct VDAudioFilterDefinition afilterDef_formatconv = {
 };
 
 
-extern const struct VDPluginInfo apluginDef_formatconv = {
+extern const VDPluginInfo apluginDef_formatconv = {
 	sizeof(VDPluginInfo),
 	L"format convert",
 	NULL,

@@ -302,7 +302,7 @@ void ScanForUnreadableFrames(FrameSubset *pSubset, VideoSource *pVideoSource) {
 						break;
 
 					try {
-						pVideoSource->streamGetFrame(buffer.data(), lActualBytes, FALSE, lFrame);
+						pVideoSource->streamGetFrame(buffer.data(), lActualBytes, FALSE, lFrame, lFrame);
 					} catch(...) {
 						++lDeadFrames;
 						break;

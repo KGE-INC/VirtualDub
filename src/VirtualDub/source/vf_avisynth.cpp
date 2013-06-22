@@ -893,7 +893,7 @@ extern const struct VDVideoFilterDefinition vfilterDef_avsadapter = {
 	VDVideoFilterAvisynthAdapter::MainProc,
 };
 
-extern const struct VDPluginInfo vpluginDef_avsadapter = {
+extern const VDPluginInfo vpluginDef_avsadapter = {
 	sizeof(VDPluginInfo),
 	L"Avisynth adapter",
 	NULL,

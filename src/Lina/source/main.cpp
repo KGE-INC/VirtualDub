@@ -544,7 +544,22 @@ void output_special_tag(Context& ctx, std::string *out, const TreeNode& tag) {
 
 		std::string s;
 
+		std::list<TreeNode *> tempStack;
+		ctx.construction_stack.swap(tempStack);
+		int cdataCount = ctx.cdata_count;
+		int preCount = ctx.pre_count;
+		ctx.cdata_count = 0;
+		ctx.pre_count = 0;
+		bool bHoldingSpace = ctx.holding_space;
+		bool bEatNextSpace = ctx.eat_next_space;
+		ctx.holding_space = false;
+		ctx.eat_next_space = true;
 		output_tag_contents(ctx, &s, tag);
+		ctx.holding_space = bHoldingSpace;
+		ctx.eat_next_space = bEatNextSpace;
+		ctx.pre_count = cdataCount;
+		ctx.cdata_count = preCount;
+		ctx.construction_stack.swap(tempStack);
 
 		std::string filename(create_output_filename(a->mValue));
 
@@ -589,10 +604,25 @@ void output_special_tag(Context& ctx, std::string *out, const TreeNode& tag) {
 		if (ctx.invocation_stack.empty())
 			error(ctx, "<lina:arg> can only be used during macro expansion");
 
-		const TreeNode& macrotag = *ctx.invocation_stack.back();
-		const TreeAttribute *a2 = macrotag.Attrib(a->mValue);
+		std::list<const TreeNode *>::const_iterator it(ctx.invocation_stack.end());
+		--it;
+
+		int levels = 1;
+		const char *name = a->mValue.c_str();
+		while(*name == '^') {
+			++levels;
+			++name;
+
+			if (it == ctx.invocation_stack.begin())
+				error(ctx, "Number of up-scope markers in name exceeds macro nesting level");
+
+			--it;
+		}
+
+		const TreeNode& macrotag = **it;
+		const TreeAttribute *a2 = macrotag.Attrib(name);
 		if (!a2)
-			error(ctx, "macro invocation <%s> does not have an attribute \"%s\"", macrotag.mName.c_str(), a->mValue.c_str());
+			error(ctx, "macro invocation <%s> does not have an attribute \"%s\"", macrotag.mName.c_str(), name);
 
 		if (out) {
 			*out += a2->mValue;

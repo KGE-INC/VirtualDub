@@ -268,6 +268,11 @@ dialog 1010, "" : fill, child {
 					listitem "Even higher";
 					listitem "Highest";
 				}
+				
+				nextrow;
+				
+				label 0, "Speed limit";
+				trackbar 104 : minh=16;
 			}
 		}
 
@@ -554,6 +559,36 @@ dialog 3000, "Create test video" : aspect=140, maxw=350 {
 				listitem "Chroma subsampling offset";
 				listitem "Channel levels";
 				listitem "Checkerboard";
+			}
+		}
+
+		include template kTemplateOKCancel;
+	}
+}
+
+dialog 3001, "Create animated GIF" : aspect=140, maxw=350, align=fill {
+	set 0 : vertical, spacing=5, align=fill {
+		grid 0 : spacing=2, align=fill {
+			column 0: minw=60;
+			column 1: affinity=1;
+
+			label 0, "&Filename" : valign=center;
+			set 0 {
+				textedit 100, "" : minw=200, sunken, align=fill, valign=fill;
+				button 300, "&..." : valign=fill;
+			}
+			
+			nextrow;
+			
+			label 0, "&Looping" : valign=top;
+			grid 0 : spacing=0, align=left {
+				now align=left;
+				option 200, "Play &once" : colspan=2;
+				nextrow;
+				option 201, "&Infinite loop" : colspan=2;
+				nextrow;
+				option 202, "Loop &count:" : marginr=5;
+				textedit 101 : minw=50, sunken, enable={@200==2};
 			}
 		}
 

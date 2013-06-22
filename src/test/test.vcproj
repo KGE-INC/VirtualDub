@@ -424,6 +424,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\source\TestFilesys.cpp"
+				>
+			</File>
+			<File
 				RelativePath="source\TestFraction.cpp"
 				>
 				<FileConfiguration

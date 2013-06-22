@@ -92,7 +92,7 @@ public:
 	////////////////////
 
 	void Quit();
-	void Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver = 0, bool fExtendedOpen = false, bool fQuiet = false, bool fAutoscan = false, const char *pInputOpts = 0);
+	void Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver = 0, bool fExtendedOpen = false, bool fQuiet = false, bool fAutoscan = false, const char *pInputOpts = 0, uint32 inputOptsLen = 0);
 	void Reopen();
 	void OpenWAV(const wchar_t *pFilename);
 	void CloseWAV();
@@ -104,7 +104,7 @@ public:
 	void Close();
 
 	void SaveFilmstrip(const wchar_t *pFilename);
-	void SaveAnimatedGIF(const wchar_t *pFilename);
+	void SaveAnimatedGIF(const wchar_t *pFilename, int loopCount);
 	void SaveRawAudio(const wchar_t *pFilename);
 
 	void StartServer();
@@ -184,10 +184,13 @@ protected:
 
 	FilterStateInfo mfsi;
 	VDPosition		mDesiredInputFrame;
+	VDPosition		mDesiredInputSample;
 	VDPosition		mDesiredOutputFrame;
 	VDPosition		mDesiredNextInputFrame;
+	VDPosition		mDesiredNextInputSample;
 	VDPosition		mDesiredNextOutputFrame;
 	VDPosition		mLastDisplayedInputFrame;
+	VDPosition		mLastDisplayedOutputFrame;
 	bool			mbUpdateInputFrame;
 	bool			mbUpdateOutputFrame;
 	bool			mbUpdateLong;

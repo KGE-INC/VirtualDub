@@ -117,7 +117,7 @@ public:
 	bool isStreaming()							{ return false; }
 
 	const void *getFrame(VDPosition lFrameDesired);
-	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num);
+	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition sample_num, VDPosition target_sample);
 
 	char getFrameTypeChar(VDPosition lFrameNum)	{ return 'K'; }
 	eDropType getDropType(VDPosition lFrameNum)	{ return kIndependent; }
@@ -237,13 +237,13 @@ const void *VDVideoSourceFLM::getFrame(VDPosition frameNum) {
 		uint32 lReadBytes;
 
 		read(frameNum, 1, buffer.data(), lBytes, &lReadBytes, NULL);
-		pFrame = streamGetFrame(buffer.data(), lReadBytes, FALSE, frameNum);
+		pFrame = streamGetFrame(buffer.data(), lReadBytes, FALSE, frameNum, frameNum);
 	}
 
 	return pFrame;
 }
 
-const void *VDVideoSourceFLM::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num) {
+const void *VDVideoSourceFLM::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num, VDPosition target_sample) {
 	VDPixmap srcbm = {0};
 	const uint32 w = (uint32)mHeader.width;
 	const uint32 h = (uint32)mHeader.height;
@@ -288,10 +288,6 @@ public:
 
 	void Init(const wchar_t *szFile);
 
-	void setOptions(InputFileOptions *_ifo);
-	InputFileOptions *createOptions(const char *buf);
-	InputFileOptions *promptForOptions(HWND hwnd);
-
 	void setAutomated(bool fAuto);
 
 	void InfoDialog(HWND hwndParent);
@@ -306,17 +302,6 @@ VDInputFileFLM::~VDInputFileFLM() {
 
 void VDInputFileFLM::Init(const wchar_t *szFile) {
 	videoSrc = new VDVideoSourceFLM(szFile);
-}
-
-void VDInputFileFLM::setOptions(InputFileOptions *_ifo) {
-}
-
-InputFileOptions *VDInputFileFLM::createOptions(const char *buf) {
-	return NULL;
-}
-
-InputFileOptions *VDInputFileFLM::promptForOptions(HWND hwnd) {
-	return NULL;
 }
 
 void VDInputFileFLM::setAutomated(bool fAuto) {

@@ -23,6 +23,12 @@
 #include <vd2/system/vectors.h>
 #include <vd2/Kasumi/pixmap.h>
 
+class IVDVideoDisplayMinidriverCallback {
+public:
+	virtual void ReleaseActiveFrame() = 0;
+	virtual void RequestNextFrame() = 0;
+};
+
 struct VDVideoDisplaySourceInfo {
 	VDPixmap	pixmap;
 	int			bpp;
@@ -32,8 +38,8 @@ struct VDVideoDisplaySourceInfo {
 	bool		bAllowConversion;
 	bool		bPersistent;
 	bool		bInterlaced;
+	IVDVideoDisplayMinidriverCallback *mpCB;
 };
-
 
 class IVDVideoDisplayMinidriver {
 public:
@@ -45,7 +51,7 @@ public:
 		kModeFieldMask	= 0x00000003,
 		kModeVSync		= 0x00000004,
 		kModeFirstField	= 0x00000008,
-		kModeAll		= 0x000000015
+		kModeAll		= 0x0000000f
 	};
 
 	enum FilterMode {
@@ -64,9 +70,11 @@ public:
 	virtual bool ModifySource(const VDVideoDisplaySourceInfo& info) = 0;
 
 	virtual bool IsValid() = 0;
+	virtual bool IsFramePending() = 0;
 	virtual void SetFilterMode(FilterMode mode) = 0;
 
 	virtual bool Tick(int id) = 0;
+	virtual void Poll() = 0;
 	virtual bool Resize() = 0;
 	virtual bool Update(UpdateMode) = 0;
 	virtual void Refresh(UpdateMode) = 0;

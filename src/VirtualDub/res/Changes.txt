@@ -1,6 +1,35 @@
 VirtualDub change log
 
-Build %build% (1.7.1, experimental): [%date%]
+Build %build% (1.7.2, experimental): [%date%]
+   [features added]
+   * Added minor frame lines to the parameter curve editor.
+   * Input driver plugin support.
+   * The threshold, sharpen, and brightness/contrast filters now support preview.
+   * The DV type-1 audio source can now be set to conceal errors.
+   * Rendering operations can be throttled or paused.
+   * Capture: Screencap driver can now capture the mouse cursor.
+
+   [bugs fixed]
+   * AVI parser now handles files with a significant amount of garbage prior to the first video or audio chunk.
+   * Curve editor opens to current frame instead of frame 0.
+   * Smart rendering didn't check the right locations in filter opacity curves if edits had been applied.
+   * Animated GIF decoder didn't handle the "erase" and "restore" disposal modes correctly.
+   * Animated GIF decoder could display a one-frame glitch at start of decoding.
+   * Time-based filters and filter curves weren't reflected in output preview when applied to a repeating frame.
+   * Fixed interlaced field DirectDraw display with planar YCbCr formats.
+   * The "smart rendering" option could cause a missing codec error even if the video mode was set to Direct.
+   * Added workaround for BlackMagic MJPEG codec not producing key frames.
+   * Added workaround for update problems with the Direct3D and OpenGL display modes in Windows Vista.
+   * Capture: Fixed crash when attempting to use "remove duplicate frames" feature of screencap driver on a 3D card that didn't support occlusion query.
+   * Capture: Fixed crash in screencap driver on 3D cards that don't support buffer objects.
+   * Capture: Fixed bugs in screencap driver's rescale function.
+
+   [regressions fixed]
+   * Fixed inaccurate length field in WAV header.
+   * D3D: Fixed memory leak.
+   * AMD64: MPEG video decoder now works.
+
+Build 27021 (1.7.1, experimental): [February 6, 2007]
    [features added]
    * AVI file info now shows the FOURCC of the video stream.
    * The "display decompressed output" option can now be enabled and disabled in the middle of encoding.
@@ -104,7 +133,11 @@ Build 25854 (1.7.0, experimental): [November 5, 2006]
    * Capture: The UI now reflects changes to audio and video sources made through the driver dialogs.
    * Capture: Possible fix for crash when changing formats with DirectShow-based devices due to threading issue.
 
-Build 24469 (1.6.17, stable): [%date%]
+Build 24473 (1.6.18, stable): [May 19, 2007]
+   * Improved compatibility of AVI files written in capture mode or with the "sector alignment" option. (NOTE: Affected files can be fixed by re-running them through VirtualDub in Direct mode.)
+   * Fixed crash when selecting Cancel after removing certain video filters from the video filter chain.
+
+Build 24469 (1.6.17, stable): [November 4, 2006]
    [bugs fixed]
    * Fixed divide by zero crash when Direct3D display is enabled and a video pane is shrunken to zero width.
    * UYVY video streams were being reported as RGB16.

@@ -13,6 +13,7 @@
 #define IDC_ACCEPT                      3
 #define IDC_PREVIEW                     3
 #define IDC_SAVEASDEFAULT               3
+#define IDOK2                           3
 #define IDC_REMOVE                      4
 #define IDS_TITLE_DUBBING               4
 #define IDC_MOVE_DOWN                   4
@@ -840,7 +841,9 @@
 #define IDC_SIZE_RELATIVE               1426
 #define IDC_ALIGNMENT_1                 1427
 #define IDC_ALIGNMENT_4                 1428
+#define IDC_SLIDER1                     1428
 #define IDC_ALIGNMENT_8                 1429
+#define IDC_STATIC_LIMIT                1429
 #define IDC_ALIGNMENT_16                1430
 #define IDC_DIR_MIDDLERIGHT             1450
 #define IDC_DIR_TOPRIGHT                1451
@@ -1270,6 +1273,8 @@
 #define ID_PREVIEWACCELERATION_NON40453 40453
 #define ID_CAPTURE_HWACCEL_NONINTEVEN   40454
 #define ID_CAPTURE_HWACCEL_NONINTODD    40455
+#define ID_PREVIEWACCELERATION_INTERLACED 40456
+#define ID_CAPTURE_HWACCEL_INTERLACED   40457
 #define ID_AUDIOMODE_11KHZ_8MONO        41000
 #define ID_AUDIOMODE_11KHZ_8STEREO      41001
 #define ID_AUDIOMODE_11KHZ_16MONO       41002
@@ -1324,8 +1329,8 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        272
-#define _APS_NEXT_COMMAND_VALUE         40456
-#define _APS_NEXT_CONTROL_VALUE         1428
+#define _APS_NEXT_COMMAND_VALUE         40458
+#define _APS_NEXT_CONTROL_VALUE         1430
 #define _APS_NEXT_SYMED_VALUE           111
 #endif
 #endif

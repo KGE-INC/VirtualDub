@@ -48,6 +48,7 @@ bool VDCompareRect(void *dst, ptrdiff_t dstpitch, const void *src, ptrdiff_t src
 void VDMemset8(void *dst, uint8 value, size_t count);
 void VDMemset16(void *dst, uint16 value, size_t count);
 void VDMemset32(void *dst, uint32 value, size_t count);
+void VDMemset128(void *dst, const void *value, size_t count);
 
 void VDMemset8Rect(void *dst, ptrdiff_t pitch, uint8 value, size_t w, size_t h);
 void VDMemset16Rect(void *dst, ptrdiff_t pitch, uint16 value, size_t w, size_t h);

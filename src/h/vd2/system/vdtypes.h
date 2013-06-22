@@ -107,8 +107,13 @@
 		typedef sint64 sintptr;
 		typedef uint64 uintptr;
 	#else
-		typedef sint32 sintptr;
-		typedef uint32 uintptr;
+		#if _MSC_VER >= 1310
+			typedef __w64 sint32 sintptr;
+			typedef __w64 uint32 uintptr;
+		#else
+			typedef sint32 sintptr;
+			typedef uint32 uintptr;
+		#endif
 	#endif
 #endif
 

@@ -35,6 +35,7 @@ struct VDAPITableOpenGL {
 	void	(APIENTRY *glAlphaFunc)(GLenum func, GLclampf ref);
 	void	(APIENTRY *glBegin)(GLenum mode);
 	void	(APIENTRY *glBindTexture)(GLenum target, GLuint texture);
+	void	(APIENTRY *glBlendFunc)(GLenum sfactor, GLenum dfactor);
 	void	(APIENTRY *glCallList)(GLuint list);
 	void	(APIENTRY *glClear)(GLbitfield mask);
 	void	(APIENTRY *glClearColor)(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha);
@@ -66,7 +67,9 @@ struct VDAPITableOpenGL {
 	void	(APIENTRY *glTexEnvi)(GLenum target, GLenum pname, GLint param);
 	void	(APIENTRY *glTexImage2D)(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const GLvoid *pixels);
 	void	(APIENTRY *glTexParameteri)(GLenum target, GLenum pname, GLint param);
+	void	(APIENTRY *glTexSubImage2D)(GLenum target, GLint level, GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, const GLvoid *pixels);
 	void	(APIENTRY *glVertex2f)(GLfloat x, GLfloat y);
+	void	(APIENTRY *glVertex2i)(GLint x, GLint y);
 	void	(APIENTRY *glViewport)(GLint x, GLint y, GLsizei width, GLsizei height);
 };
 
@@ -135,7 +138,28 @@ struct VDAPITableOpenGL {
 #define		GL_COMBINER6_NV						0x8556
 #define		GL_COMBINER7_NV						0x8557
 
+#define		GL_COMBINE_EXT						0x8570
+#define		GL_COMBINE_RGB_EXT					0x8571
+#define		GL_COMBINE_ALPHA_EXT				0x8572
+#define		GL_RGB_SCALE_EXT					0x8573
+#define		GL_ADD_SIGNED_EXT					0x8574
+#define		GL_INTERPOLATE_EXT					0x8575
+#define		GL_CONSTANT_EXT						0x8576
+#define		GL_PRIMARY_COLOR_EXT				0x8577
 #define		GL_PRIMARY_COLOR_ARB				0x8577
+#define		GL_PREVIOUS_EXT						0x8578
+#define		GL_SOURCE0_RGB_EXT					0x8580
+#define		GL_SOURCE1_RGB_EXT					0x8581
+#define		GL_SOURCE2_RGB_EXT					0x8582
+#define		GL_SOURCE0_ALPHA_EXT				0x8588
+#define		GL_SOURCE1_ALPHA_EXT				0x8589
+#define		GL_SOURCE2_ALPHA_EXT				0x858A
+#define		GL_OPERAND0_RGB_EXT					0x8590
+#define		GL_OPERAND1_RGB_EXT					0x8591
+#define		GL_OPERAND2_RGB_EXT					0x8592
+#define		GL_OPERAND0_ALPHA_EXT				0x8598
+#define		GL_OPERAND1_ALPHA_EXT				0x8599
+#define		GL_OPERAND2_ALPHA_EXT				0x859A
 
 #define		GL_PIXEL_COUNTER_BITS_NV			0x8864
 #define		GL_CURRENT_OCCLUSION_QUERY_ID_NV	0x8865
@@ -335,12 +359,14 @@ public:
 
 public:
 	// extension flags
+	bool ARB_multitexture;
 	bool NV_register_combiners;
 	bool NV_register_combiners2;
 	bool NV_occlusion_query;
 	bool EXT_pixel_buffer_object;
 	bool ARB_pixel_buffer_object;
 	bool ATI_fragment_shader;
+	bool EXT_texture_env_combine;
 
 	// WGL extension flags
 	bool ARB_make_current_read;

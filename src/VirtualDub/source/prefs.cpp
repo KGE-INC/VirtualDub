@@ -50,6 +50,7 @@ namespace {
 		uint32			mRenderOutputBufferSize;
 		uint32			mRenderWaveBufferSize;
 		uint32			mRenderVideoBufferCount;
+		uint32			mRenderThrottlePercent;
 		VDStringW		mD3DFXFile;
 		uint32			mFileAsyncDefaultMode;
 		uint32			mAVISuperindexLimit;
@@ -85,6 +86,16 @@ public:
 			SetValue(101, mPrefs.mOldPrefs.main.iPreviewPriority);
 			SetValue(102, mPrefs.mOldPrefs.main.iDubPriority);
 			SetValue(103, mPrefs.mOldPrefs.main.fAttachExtension);
+
+			pWin = mpBase->GetControl(104);
+			{
+				IVDUITrackbar *pTrackbar = vdpoly_cast<IVDUITrackbar *>(pWin);
+
+				if (pTrackbar) {
+					pTrackbar->SetRange(1, 10);
+					pWin->SetValue((mPrefs.mRenderThrottlePercent + 5) / 10);
+				}
+			}
 			pBase->ExecuteAllLinks();
 			return true;
 		case kEventSync:
@@ -93,6 +104,7 @@ public:
 			mPrefs.mOldPrefs.main.iPreviewPriority	= (char)GetValue(101);
 			mPrefs.mOldPrefs.main.iDubPriority		= (char)GetValue(102);
 			mPrefs.mOldPrefs.main.fAttachExtension	= (char)GetValue(103);
+			mPrefs.mRenderThrottlePercent			= GetValue(104) * 10;
 			return true;
 		}
 		return false;
@@ -116,7 +128,7 @@ public:
 			SetValue(105, 0 != (mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayEnableD3DFX));
 			SetValue(106, 0 != (mPrefs.mOldPrefs.fDisplay & Preferences::kDisplayEnableVSync));
 			SetValue(107, mPrefs.mbDisplayAllowDirectXOverlays);
-			SetCaption(300, mPrefs.mD3DFXFile);
+			SetCaption(300, mPrefs.mD3DFXFile.c_str());
 			pBase->ExecuteAllLinks();
 			return true;
 		case kEventSync:
@@ -224,15 +236,15 @@ public:
 		int v = GetValue(100);
 
 		if (!v)
-			SetCaption(101, VDStringW(L"Off"));
+			SetCaption(101, L"Off");
 		else
-			SetCaption(101, VDswprintf(L"%u", 1, &v));
+			SetCaption(101, VDswprintf(L"%u", 1, &v).c_str());
 
 		v = GetValue(200);
 		if (!v)
-			SetCaption(201, VDStringW(L"Off"));
+			SetCaption(201, L"Off");
 		else
-			SetCaption(201, VDswprintf(L"%u", 1, &v));
+			SetCaption(201, VDswprintf(L"%u", 1, &v).c_str());
 	}
 };
 
@@ -251,11 +263,11 @@ public:
 			SetValue(103, mPrefs.mbEnableAVIAlignmentThreshold);
 			{
 				unsigned v = mPrefs.mAVIAlignmentThreshold;
-				SetCaption(200, VDswprintf(L"%u", 1, &v));
+				SetCaption(200, VDswprintf(L"%u", 1, &v).c_str());
 				v = mPrefs.mAVISuperindexLimit;
-				SetCaption(201, VDswprintf(L"%u", 1, &v));
+				SetCaption(201, VDswprintf(L"%u", 1, &v).c_str());
 				v = mPrefs.mAVISubindexLimit;
-				SetCaption(202, VDswprintf(L"%u", 1, &v));
+				SetCaption(202, VDswprintf(L"%u", 1, &v).c_str());
 			}
 			SetValue(104, mPrefs.mbPreferInternalDecoders);
 			pBase->ExecuteAllLinks();
@@ -286,7 +298,7 @@ public:
 		case kEventAttach:
 			mpBase = pBase;
 			pBase->ExecuteAllLinks();
-			SetCaption(200, mPrefs.mTimelineFormat);
+			SetCaption(200, mPrefs.mTimelineFormat.c_str());
 			return true;
 		case kEventDetach:
 		case kEventSync:
@@ -434,6 +446,7 @@ void LoadPreferences() {
 	g_prefs2.mRenderOutputBufferSize = std::max<uint32>(65536, std::min<uint32>(0x10000000, key.getInt("Render: Output buffer size", 2097152)));
 	g_prefs2.mRenderWaveBufferSize = std::max<uint32>(65536, std::min<uint32>(0x10000000, key.getInt("Render: Wave buffer size", 65536)));
 	g_prefs2.mRenderVideoBufferCount = std::max<uint32>(1, std::min<uint32>(65536, key.getInt("Render: Video buffer count", 32)));
+	g_prefs2.mRenderThrottlePercent = std::max<uint32>(10, std::min<uint32>(100, key.getInt("Render: Default throttle percent", 100)));
 	g_prefs2.mFileAsyncDefaultMode = std::min<uint32>(IVDFileAsync::kModeCount-1, key.getInt("File: Async mode", IVDFileAsync::kModeAsynchronous));
 	g_prefs2.mAVISuperindexLimit = key.getInt("AVI: Superindex entry limit", 256);
 	g_prefs2.mAVISubindexLimit = key.getInt("AVI: Subindex entry limit", 8192);
@@ -459,6 +472,7 @@ void VDSavePreferences(VDPreferences2& prefs) {
 	key.setInt("Render: Output buffer size", prefs.mRenderOutputBufferSize);
 	key.setInt("Render: Wave buffer size", prefs.mRenderWaveBufferSize);
 	key.setInt("Render: Video buffer count", prefs.mRenderVideoBufferCount);
+	key.setInt("Render: Default throttle percent", prefs.mRenderThrottlePercent);
 	key.setInt("File: Async mode", prefs.mFileAsyncDefaultMode);
 	key.setInt("AVI: Superindex entry limit", prefs.mAVISuperindexLimit);
 	key.setInt("AVI: Subindex entry limit", prefs.mAVISubindexLimit);
@@ -509,6 +523,10 @@ uint32& VDPreferencesGetRenderWaveBufferSize() {
 
 uint32& VDPreferencesGetRenderVideoBufferCount() {
 	return g_prefs2.mRenderVideoBufferCount;
+}
+
+uint32 VDPreferencesGetRenderThrottlePercent() {
+	return g_prefs2.mRenderThrottlePercent;
 }
 
 uint32 VDPreferencesGetFileAsyncDefaultMode() {

@@ -194,7 +194,7 @@ extern const struct VDAudioFilterDefinition afilterDef_gain = {
 	&VDAudioFilterBase::sVtbl,
 };
 
-extern const struct VDPluginInfo apluginDef_gain = {
+extern const VDPluginInfo apluginDef_gain = {
 	sizeof(VDPluginInfo),
 	L"gain",
 	NULL,

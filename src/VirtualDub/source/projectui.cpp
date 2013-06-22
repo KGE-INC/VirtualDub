@@ -19,6 +19,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <vd2/system/vdtypes.h>
+#include <vd2/system/binary.h>
 #include <vd2/system/filesys.h>
 #include <vd2/system/registry.h>
 #include <vd2/system/w32assist.h>
@@ -260,8 +261,10 @@ VDProjectUI::VDProjectUI()
 	, mhMenuNormal(NULL)
 	, mhMenuDub(NULL)
 	, mhMenuDisplay(NULL)
-	, mhAccelMain(NULL)
 	, mhAccelDub(NULL)
+	, mhAccelMain(NULL)
+	, mbInputFrameValid(false)
+	, mbOutputFrameValid(false)
 	, mOldWndProc(NULL)
 	, mbDubActive(false)
 	, mMRUList(4, "MRU List")
@@ -347,16 +350,16 @@ bool VDProjectUI::Attach(VDGUIHandle hwnd) {
 		return false;
 	}
 
-	mhwndInputDisplay = CreateWindowEx(0, VIDEODISPLAYCONTROLCLASS, "", WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS, 0, 0, 64, 64, mhwndInputFrame, (HMENU)1, g_hInst, NULL);
-	mhwndOutputDisplay = CreateWindowEx(0, VIDEODISPLAYCONTROLCLASS, "", WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS, 0, 0, 64, 64, mhwndOutputFrame, (HMENU)2, g_hInst, NULL);
+	mhwndInputDisplay = (HWND)VDCreateDisplayWindowW32(0, WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS, 0, 0, 64, 64, (VDGUIHandle)mhwndInputFrame);
+	mhwndOutputDisplay = (HWND)VDCreateDisplayWindowW32(0, WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS, 0, 0, 64, 64, (VDGUIHandle)mhwndOutputFrame);
 
 	if (!mhwndInputDisplay || !mhwndOutputDisplay) {
 		Detach();
 		return false;
 	}
 
-	mpInputDisplay = VDGetIVideoDisplay(mhwndInputDisplay);
-	mpOutputDisplay = VDGetIVideoDisplay(mhwndOutputDisplay);
+	mpInputDisplay = VDGetIVideoDisplay((VDGUIHandle)mhwndInputDisplay);
+	mpOutputDisplay = VDGetIVideoDisplay((VDGUIHandle)mhwndOutputDisplay);
 
 	mpInputDisplay->SetCallback(this);
 	mpOutputDisplay->SetCallback(this);
@@ -452,18 +455,18 @@ void VDProjectUI::Detach() {
 		mhwndStatus = NULL;
 	}
 
-	if (mhwndInputDisplay) {
+	if (mpInputDisplay) {
 		if (mhwndInputFrame)
 			VDGetIVideoWindow(mhwndInputFrame)->SetDisplay(NULL);
-		DestroyWindow(mhwndInputDisplay);
+		mpInputDisplay->Destroy();
 		mhwndInputDisplay = NULL;
 		mpInputDisplay = NULL;
 	}
 
-	if (mhwndOutputDisplay) {
+	if (mpOutputDisplay) {
 		if (mhwndOutputFrame)
 			VDGetIVideoWindow(mhwndOutputFrame)->SetDisplay(NULL);
-		DestroyWindow(mhwndOutputDisplay);
+		mpOutputDisplay->Destroy();
 		mhwndOutputDisplay = NULL;
 		mpOutputDisplay = NULL;
 	}
@@ -720,13 +723,89 @@ void VDProjectUI::SaveFilmstripAsk() {
 	}
 }
 
+namespace {
+	class VDOutputFileAnimatedGIFOptionsDialog : public VDDialogBase {
+	public:
+		VDStringW mFileName;
+		int mLoopCount;
+
+	public:
+		VDOutputFileAnimatedGIFOptionsDialog() : mLoopCount(0) {}
+
+		bool HandleUIEvent(IVDUIBase *pBase, IVDUIWindow *pWin, uint32 id, eEventType type, int item) {
+			if (type == kEventAttach) {
+				mpBase = pBase;
+				SetCaption(100, VDGetLastLoadSavePath(kFileDialog_GIFOut).c_str());
+
+				VDRegistryAppKey appKey("Persistence");
+				int loopCount = appKey.getInt("AnimGIF: Loop count", 0);
+
+				SetValue(200, loopCount == 1 ? 0 : loopCount == 0 ? 1 : 2);
+
+				int loopCountValue = loopCount < 2 ? 2 : loopCount;
+				SetCaption(101, VDswprintf(L"%d", 1, &loopCountValue).c_str());
+
+				pBase->ExecuteAllLinks();
+			} else if (type == kEventSelect) {
+				if (id == 10) {
+					mFileName = GetCaption(100);
+
+					int loopMode = GetValue(200);
+					if (loopMode == 0)
+						mLoopCount = 1;
+					else if (loopMode == 1)
+						mLoopCount = 0;
+					else {
+						const VDStringW caption(GetCaption(101));
+
+						unsigned loops;
+						if (1 != swscanf(caption.c_str(), L" %u", &loops)) {
+							mpBase->GetControl(101)->SetFocus();
+							::MessageBeep(MB_ICONEXCLAMATION);
+							return true;
+						}
+
+						mLoopCount = loops;
+					}
+
+					VDRegistryAppKey appKey("Persistence");
+					appKey.setInt("AnimGIF: Loop count", mLoopCount);
+
+					pBase->EndModal(true);
+					return true;
+				} else if (id == 11) {
+					pBase->EndModal(false);
+					return true;
+				} else if (id == 300) {
+					const VDStringW filename(VDGetSaveFileName(kFileDialog_GIFOut, (VDGUIHandle)vdpoly_cast<IVDUIWindowW32 *>(pBase)->GetHandleW32(), L"Save animated GIF", L"Animated GIF (*.gif)\0*.gif\0", g_prefs.main.fAttachExtension ? L"gif" : NULL));
+
+					if (!filename.empty())
+						SetCaption(100, filename.c_str());
+				}
+			}
+			return false;
+		}
+	};
+}
+
 void VDProjectUI::SaveAnimatedGIFAsk() {
 	if (!inputVideoAVI)
 		throw MyError("No input video stream to process.");
 
-	const VDStringW filename(VDGetSaveFileName(kFileDialog_GIFOut, mhwnd, L"Save animated GIF", L"Animated GIF (*.gif)\0*.gif\0", g_prefs.main.fAttachExtension ? L"gif" : NULL));
-	if (!filename.empty()) {
-		SaveAnimatedGIF(filename.c_str());
+	vdautoptr<IVDUIWindow> peer(VDUICreatePeer(mhwnd));
+
+	IVDUIWindow *pWin = VDCreateDialogFromResource(3001, peer);
+	VDOutputFileAnimatedGIFOptionsDialog dlg;
+
+	IVDUIBase *pBase = vdpoly_cast<IVDUIBase *>(pWin);
+	
+	pBase->SetCallback(&dlg, false);
+	int result = pBase->DoModal();
+
+	peer->Shutdown();
+
+	if (result) {
+		SaveAnimatedGIF(dlg.mFileName.c_str(), dlg.mLoopCount);
 	}
 }
 
@@ -1526,9 +1605,9 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam) {
 					break;
 				case VWN_REQUPDATE:
 					if (nmh->idFrom == 1)
-						UIRefreshInputFrame(inputVideoAVI && inputVideoAVI->isFrameBufferValid());
+						UIRefreshInputFrame(inputVideoAVI && inputVideoAVI->isFrameBufferValid() && mbInputFrameValid);
 					else
-						UIRefreshOutputFrame(filters.isRunning());
+						UIRefreshOutputFrame(filters.isRunning() && mbOutputFrameValid);
 					break;
 				}
 				break;
@@ -1553,6 +1632,32 @@ LRESULT VDProjectUI::MainWndProc( UINT msg, WPARAM wParam, LPARAM lParam) {
 		// to the position control.  Obviously for this to be safe the position control
 		// MUST eat the message, which it currently does.
 		return SendMessage(mhwndPosition, WM_MOUSEWHEEL, wParam, lParam);
+
+	case WM_USER+100:		// display update request
+		if (!g_dubber) {
+			IVDVideoDisplay *pDisp = wParam ? mpOutputDisplay : mpInputDisplay;
+			if (wParam) {
+				bool bValid = mbOutputFrameValid && filters.isRunning();
+
+				if (!bValid && g_dubOpts.video.fShowOutputFrame && inputVideoAVI && inputVideoAVI->isFrameBufferValid() && mbInputFrameValid) {
+					try {
+						VDPosition srcPos = GetCurrentFrame();
+						VDPosition dstPos = mTimeline.TimelineToSourceFrame(srcPos);
+
+						RefilterFrame(srcPos, dstPos);
+						bValid = true;
+					} catch(const MyError&) {
+						// eat error
+					}
+				}
+
+				UIRefreshOutputFrame(bValid);
+			} else
+				UIRefreshInputFrame(mbInputFrameValid && inputVideoAVI && inputVideoAVI->isFrameBufferValid());
+
+			pDisp->Cache();
+		}
+		break;
 	}
 
 	return VDUIFrame::GetFrame((HWND)mhwnd)->DefProc((HWND)mhwnd, msg, wParam, lParam);
@@ -1752,9 +1857,9 @@ void VDProjectUI::UpdateVideoFrameLayout() {
 		BITMAPINFOHEADER *formatIn = inputVideoAVI->getImageFormat();
 
 		if (formatIn) {
-			BITMAPINFOHEADER *dcf = inputVideoAVI->getDecompressedFormat();
-			int w0 = abs(dcf->biWidth);
-			int h0 = abs(dcf->biHeight);
+			const VDPixmap& px = inputVideoAVI->getTargetFormat();
+			int w0 = px.w;
+			int h0 = px.h;
 			int w = w0;
 			int h = h0;
 
@@ -1772,7 +1877,7 @@ void VDProjectUI::UpdateVideoFrameLayout() {
 
 			if (!g_listFA.IsEmpty()) {
 				if (!filters.isRunning())
-					filters.prepareLinearChain(&g_listFA, (Pixel *)(dcf+1), w0, h0, 0);
+					filters.prepareLinearChain(&g_listFA, (Pixel*)px.palette, w0, h0, 0);
 
 				w2 = filters.LastBitmap()->w;
 				h2 = filters.LastBitmap()->h;
@@ -1944,6 +2049,7 @@ void VDProjectUI::OpenCurveEditor() {
 	mpCurveEditor = VDGetIUIParameterCurveControl((VDGUIHandle)mhwndCurveEditor);
 	mpCurveEditor->CurveUpdatedEvent() += mCurveUpdatedDelegate(this, &VDProjectUI::OnCurveUpdated);
 	mpCurveEditor->StatusUpdatedEvent() += mCurveStatusUpdatedDelegate(this, &VDProjectUI::OnCurveStatusUpdated);
+	mpCurveEditor->SetPosition(GetCurrentFrame());
 
 	UpdateCurveList();
 	OnSize();
@@ -2018,24 +2124,23 @@ void VDProjectUI::UpdateCurveList() {
 }
 
 void VDProjectUI::UIRefreshInputFrame(bool bValid) {
+	IVDVideoDisplay *pDisp = VDGetIVideoDisplay((VDGUIHandle)mhwndInputDisplay);
 	if (bValid) {
 		const VDPixmap& pxsrc = inputVideoAVI->getTargetFormat();
-		IVDVideoDisplay *pDisp = VDGetIVideoDisplay(mhwndInputDisplay);
 
 		pDisp->SetSource(true, pxsrc);
 	} else {
-		if (HDC hdc = GetDC(mhwndInputFrame)) {
-			FillRect(hdc, &mrInputFrame, (HBRUSH)GetClassLongPtr((HWND)mhwnd, GCLP_HBRBACKGROUND));
-			ReleaseDC(mhwndInputFrame, hdc);
-		}
+		pDisp->SetSourceSolidColor(0xFF000000 + (VDSwizzleU32(GetSysColor(COLOR_BACKGROUND) & 0xFFFFFF) >> 24));
 	}
+
+	mbInputFrameValid = bValid;
 }
 
 void VDProjectUI::UIRefreshOutputFrame(bool bValid) {
+	IVDVideoDisplay *pDisp = VDGetIVideoDisplay((VDGUIHandle)mhwndOutputDisplay);
 	if (bValid) {
 		VBitmap *out = filters.LastBitmap();
 
-		IVDVideoDisplay *pDisp = VDGetIVideoDisplay(mhwndOutputDisplay);
 		VDPixmap srcmap = {0};
 
 		srcmap.data		= (char *)out->data + out->pitch * (out->h - 1);
@@ -2060,11 +2165,10 @@ void VDProjectUI::UIRefreshOutputFrame(bool bValid) {
 
 //		pDisp->Update(IVDVideoDisplay::kAllFields);			not necessary; done by SetSource
 	} else {
-		if (HDC hdc = GetDC(mhwndOutputFrame)) {
-			FillRect(hdc, &mrOutputFrame, (HBRUSH)GetClassLongPtr((HWND)mhwnd, GCLP_HBRBACKGROUND));
-			ReleaseDC(mhwndOutputFrame, hdc);
-		}
+		pDisp->SetSourceSolidColor(0xFF000000 + (VDSwizzleU32(GetSysColor(COLOR_BACKGROUND) & 0xFFFFFF) >> 24));
 	}
+
+	mbOutputFrameValid = bValid;
 }
 
 void VDProjectUI::UISetDubbingMode(bool bActive, bool bIsPreview) {
@@ -2195,6 +2299,7 @@ void VDProjectUI::UISourceFileUpdated() {
 
 		VDSetLastLoadSaveFileName(VDFSPECKEY_SAVEVIDEOFILE, (fileName + L".avi").c_str());
 		VDSetLastLoadSaveFileName(kFileDialog_WAVAudioOut, (fileName + L".wav").c_str());
+		VDSetLastLoadSaveFileName(kFileDialog_GIFOut, (fileName + L".gif").c_str());
 
 		const wchar_t *s = VDFileSplitPath(g_szInputAVIFile);
 
@@ -2345,28 +2450,7 @@ void VDProjectUI::SetStatus(const wchar_t *s) {
 }
 
 void VDProjectUI::DisplayRequestUpdate(IVDVideoDisplay *pDisp) {
-	if (!g_dubber) {
-		if (pDisp == mpOutputDisplay) {
-			bool bValid = filters.isRunning();
-
-			if (!bValid && g_dubOpts.video.fShowOutputFrame && inputVideoAVI && inputVideoAVI->isFrameBufferValid()) {
-				try {
-					VDPosition srcPos = GetCurrentFrame();
-					VDPosition dstPos = mTimeline.TimelineToSourceFrame(srcPos);
-
-					RefilterFrame(srcPos, dstPos);
-					bValid = true;
-				} catch(const MyError&) {
-					// eat error
-				}
-			}
-
-			UIRefreshOutputFrame(bValid);
-		} else
-			UIRefreshInputFrame(inputVideoAVI && inputVideoAVI->isFrameBufferValid());
-
-		pDisp->Cache();
-	}
+	PostMessage((HWND)mhwnd, WM_USER + 100, pDisp == mpOutputDisplay, 0);
 }
 
 //////////////////////////////////////////////////////////////////////

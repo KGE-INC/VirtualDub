@@ -168,7 +168,7 @@ extern const struct VDVideoFilterDefinition vfilterDef_separateFields = {
 	VDVideoFilterSeparateFields::MainProc,
 };
 
-extern const struct VDPluginInfo vpluginDef_separateFields = {
+extern const VDPluginInfo vpluginDef_separateFields = {
 	sizeof(VDPluginInfo),
 	L"separate fields",
 	NULL,
@@ -295,7 +295,7 @@ extern const struct VDVideoFilterDefinition vfilterDef_WeaveFields = {
 	VDVideoFilterWeaveFields::MainProc,
 };
 
-extern const struct VDPluginInfo vpluginDef_WeaveFields = {
+extern const VDPluginInfo vpluginDef_WeaveFields = {
 	sizeof(VDPluginInfo),
 	L"weave fields",
 	NULL,

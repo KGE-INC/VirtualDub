@@ -125,7 +125,7 @@ extern const struct VDAudioFilterDefinition afilterDef_sink = {
 	&VDAudioFilterBase::sVtbl,
 };
 
-extern const struct VDPluginInfo apluginDef_sink = {
+extern const VDPluginInfo apluginDef_sink = {
 	sizeof(VDPluginInfo),
 	L"*sink",
 	NULL,
@@ -198,7 +198,7 @@ extern const struct VDAudioFilterDefinition afilterDef_output = {
 	&VDAudioFilterBase::sVtbl,
 };
 
-extern const struct VDPluginInfo apluginDef_output = {
+extern const VDPluginInfo apluginDef_output = {
 	sizeof(VDPluginInfo),
 	L"output",
 	NULL,
@@ -227,7 +227,7 @@ extern const struct VDAudioFilterDefinition afilterDef_discard = {
 	&VDAudioFilterBase::sVtbl,
 };
 
-extern const struct VDPluginInfo apluginDef_discard = {
+extern const VDPluginInfo apluginDef_discard = {
 	sizeof(VDPluginInfo),
 	L"discard",
 	NULL,

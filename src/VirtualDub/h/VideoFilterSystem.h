@@ -8,7 +8,8 @@
 #include "plugins.h"
 
 class VDScheduler;
-struct VDPluginInfo;
+struct VDXPluginInfo;
+typedef VDXPluginInfo VDPluginInfo;
 struct VDVideoFilterFrame;
 class IVDAsyncErrorCallback;
 

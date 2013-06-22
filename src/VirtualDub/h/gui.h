@@ -133,10 +133,10 @@ protected:
 		return pWin ? pWin->GetCaption() : VDStringW();
 	}
 
-	void SetCaption(uint32 id, const VDStringW& s) {
+	void SetCaption(uint32 id, const wchar_t *s) {
 		IVDUIWindow *pWin = mpBase->GetControl(id);
 		if (pWin)
-			pWin->SetCaption(s.c_str());
+			pWin->SetCaption(s);
 	}
 
 	IVDUIBase *mpBase;

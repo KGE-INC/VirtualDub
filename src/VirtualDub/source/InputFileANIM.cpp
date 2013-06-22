@@ -70,7 +70,7 @@ public:
 	bool isStreaming()							{ return false; }
 
 	const void *getFrame(VDPosition lFrameDesired);
-	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num);
+	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition sample_num, VDPosition target_sample);
 
 	char getFrameTypeChar(VDPosition lFrameNum)	{ return !lFrameNum ? 'K' : ' '; }
 	eDropType getDropType(VDPosition lFrameNum)	{ return !lFrameNum ? kIndependent : kDependant; }
@@ -355,7 +355,7 @@ const void *VDVideoSourceANIM::getFrame(VDPosition lFrameDesired64) {
 			if (!lBytesRead)
 				continue;
 
-			streamGetFrame(dataBuffer.data(), lBytesRead, lFrameNum == lFrameDesired, lFrameNum);
+			streamGetFrame(dataBuffer.data(), lBytesRead, lFrameNum == lFrameDesired, lFrameNum, lFrameNum);
 		} while(++lFrameNum <= lFrameDesired);
 
 	} catch(const MyError&) {
@@ -368,7 +368,7 @@ const void *VDVideoSourceANIM::getFrame(VDPosition lFrameDesired64) {
 	return getFrameBuffer();
 }
 
-const void *VDVideoSourceANIM::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num) {
+const void *VDVideoSourceANIM::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num, VDPosition target_sample) {
 	const uint8 *src = (const uint8 *)inputBuffer;
 	uint8 *dst = &mDeltaPlanes[(int)frame_num & 1][0];
 	const int w = getImageFormat()->biWidth;
@@ -518,10 +518,6 @@ public:
 
 	void Init(const wchar_t *szFile);
 
-	void setOptions(InputFileOptions *_ifo);
-	InputFileOptions *createOptions(const char *buf);
-	InputFileOptions *promptForOptions(HWND hwnd);
-
 	void setAutomated(bool fAuto);
 
 	void InfoDialog(HWND hwndParent);
@@ -536,17 +532,6 @@ VDInputFileANIM::~VDInputFileANIM() {
 
 void VDInputFileANIM::Init(const wchar_t *szFile) {
 	videoSrc = new VDVideoSourceANIM(szFile);
-}
-
-void VDInputFileANIM::setOptions(InputFileOptions *_ifo) {
-}
-
-InputFileOptions *VDInputFileANIM::createOptions(const char *buf) {
-	return NULL;
-}
-
-InputFileOptions *VDInputFileANIM::promptForOptions(HWND hwnd) {
-	return NULL;
 }
 
 void VDInputFileANIM::setAutomated(bool fAuto) {

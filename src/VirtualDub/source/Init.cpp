@@ -101,6 +101,7 @@ extern void InitBuiltinFilters();
 extern void VDInitBuiltinAudioFilters();
 extern void VDInitBuiltinVideoFilters();
 extern void VDInitInputDrivers();
+extern void VDShutdownInputDrivers();
 extern void VDInitExternalCallTrap();
 extern void VDInitVideoCodecBugTrap();
 
@@ -386,7 +387,7 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 
 		// announce startup
 		VDLog(kVDLogInfo, VDswprintf(
-				L"VirtualDub CLI Video Processor Version 1.7.1 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
+				L"VirtualDub CLI Video Processor Version 1.7.2 (build %lu/" VD_GENERIC_BUILD_NAMEW L") for " VD_COMPILE_TARGETW
 				,1
 				,&version_num));
 		VDLog(kVDLogInfo, VDswprintf(
@@ -421,6 +422,25 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 	if (!cmdLine.FindAndRemoveSwitch(L"safecpu"))
 		VDCPUTest();
 
+	int pluginsSucceeded = 0;
+	int pluginsFailed = 0;
+	vdprotected("autoloading filters at startup") {
+		int f, s;
+
+		VDStringW programPath(VDGetProgramPath());
+
+		VDLoadPlugins(VDMakePath(programPath.c_str(), L"plugins"), s, f);
+		pluginsSucceeded += s;
+		pluginsFailed += f;
+#ifdef _M_AMD64
+		VDLoadPlugins(VDMakePath(programPath.c_str(), L"plugins64"), s, f);
+#else
+		VDLoadPlugins(VDMakePath(programPath.c_str(), L"plugins32"), s, f);
+#endif
+		pluginsSucceeded += s;
+		pluginsFailed += f;
+	}
+
 	// initialize filters, job system, MRU list, help system
 
 	InitBuiltinFilters();
@@ -454,15 +474,8 @@ bool Init(HINSTANCE hInstance, int nCmdShow, VDCommandLine& cmdLine) {
 	// Autoload filters.
 
 	VDCHECKPOINT;
-
-	vdprotected("autoloading filters at startup") {
-		int f, s;
-
-		VDLoadPlugins(VDMakePath(VDGetProgramPath().c_str(), L"plugins"), s, f);
-
-		if (s || f)
-			guiSetStatus("Autoloaded %d filters (%d failed).", 255, s, f);
-	}
+	if (pluginsSucceeded || pluginsFailed)
+		guiSetStatus("Autoloaded %d filters (%d failed).", 255, pluginsSucceeded, pluginsFailed);
 
 	// Detect DivX.
 
@@ -504,12 +517,13 @@ void Deinit() {
 
 	VDCHECKPOINT;
 
-	VDDeinitPluginSystem();
-
 	VDCHECKPOINT;
 
 	CloseJobWindow();
 	DeinitJobSystem();
+
+	VDShutdownInputDrivers();			// must be before plugin system
+	VDDeinitPluginSystem();
 
 	g_VDStartupArguments.clear();
 
@@ -816,6 +830,7 @@ int VDProcessCommandLine(const VDCommandLine& cmdLine) {
 						throw MyError("Command line error: syntax is /F <filter>");
 
 					VDAddPluginModule(token);
+					VDInitInputDrivers();
 
 					guiSetStatus("Loaded external filter module: %s", 255, VDTextWToA(token));
 				}

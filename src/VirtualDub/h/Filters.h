@@ -44,16 +44,6 @@ class IVDPositionControl;
 struct VDWaveFormat;
 class VDTimeline;
 
-//////////////////
-
-#ifndef f_FILTER_GLOBALS
-#define EXTERN extern
-#define INIT(x)
-#else
-#define EXTERN
-#define INIT(x) =x
-#endif
-
 ///////////////////
 
 VDWaveFormat *VDCopyWaveFormat(const VDWaveFormat *pFormat);
@@ -73,6 +63,8 @@ public:
 	HDC		hdc;
 };
 
+class FilterInstanceAutoDeinit;
+
 class FilterInstance : public ListNode, public FilterActivation {
 private:
 	FilterInstance& operator=(const FilterInstance&);		// outlaw copy assignment
@@ -85,7 +77,6 @@ public:
 	void *pvDstView, *pvLastView;
 	int srcbuf, dstbuf;
 	int origw, origh;
-	bool fNoDeinit;
 
 	FilterStateInfo *pfsiDelayRing;
 	FilterStateInfo *pfsiDelayInput;
@@ -95,6 +86,8 @@ public:
 	int nDelayRingSize;
 
 	VDStringW	mFilterName;
+
+	FilterInstanceAutoDeinit	*mpAutoDeinit;
 
 	std::vector<VDScriptFunctionDef>	mScriptFunc;
 	VDScriptObject	mScriptObj;
@@ -107,13 +100,13 @@ public:
 
 	FilterInstance *Clone();
 	void Destroy();
-	void ForceNoDeinit();
 
 	VDParameterCurve *GetAlphaParameterCurve() const { return mpAlphaCurve; }
 	void SetAlphaParameterCurve(VDParameterCurve *p) { mpAlphaCurve = p; }
 
 protected:
 	static void ConvertParameters(CScriptValue *dst, const VDScriptValue *src, int argc);
+	static void ConvertValue(VDScriptValue& dst, const CScriptValue& src);
 	static void ScriptFunctionThunkVoid(IVDScriptInterpreter *, VDScriptValue *, int);
 	static void ScriptFunctionThunkInt(IVDScriptInterpreter *, VDScriptValue *, int);
 	static void ScriptFunctionThunkVariadic(IVDScriptInterpreter *, VDScriptValue *, int);
@@ -187,9 +180,9 @@ public:
 
 //////////
 
-EXTERN List				g_listFA;
+extern List			g_listFA;
 
-EXTERN FilterSystem filters;
+extern FilterSystem	filters;
 
 FilterDefinition *	FilterAdd(FilterModule *fm, FilterDefinition *pfd, int fd_len);
 void				FilterAddBuiltin(const FilterDefinition *pfd);
@@ -205,9 +198,6 @@ struct FilterBlurb {
 void				FilterEnumerateFilters(std::list<FilterBlurb>& blurbs);
 
 
-LONG FilterGetSingleValue(HWND hWnd, LONG cVal, LONG lMin, LONG lMax, char *title);
-
-#undef EXTERN
-#undef INIT
+LONG FilterGetSingleValue(HWND hWnd, LONG cVal, LONG lMin, LONG lMax, char *title, IFilterPreview *ifp, void (*pUpdateFunction)(long value, void *data), void *pUpdateFunctionData);
 
 #endif

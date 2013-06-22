@@ -25,6 +25,7 @@
 
 #include <vd2/system/vdstl.h>
 #include <vd2/system/refcount.h>
+#include <vd2/system/thread.h>
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -74,6 +75,11 @@ public:
 	virtual IDirect3DTexture9 *GetD3DTexture() = 0;
 };
 
+class IVDD3D9SwapChain : public IVDRefCount {
+public:
+	virtual IDirect3DSwapChain9 *GetD3DSwapChain() const = 0;
+};
+
 class IVDD3D9TextureGenerator : public IVDRefCount {
 public:
 	virtual bool GenerateTexture(VDD3D9Manager *pManager, IVDD3D9Texture *pTexture) = 0;
@@ -81,20 +87,39 @@ public:
 
 class VDD3DPresentHistory {
 public:
+	bool mbPresentPending;
+	bool mbPresentLoopStarted;
+	bool mbPresentBlitStarted;
 	float mPresentDelay;
 	float mVBlankSuccess;
+	uint64	mPresentStartTime;
 
-	VDD3DPresentHistory() : mPresentDelay(0.f), mVBlankSuccess(1.0f) {}
+	float	mScanlineTarget;
+	sint32	mLastScanline;
+
+	sint32 mFirstScanline;
+	uint32	mMaxScanline;
+	sint32	mScanTop;
+	sint32	mScanBottom;
+
+	float mSuccessProb[17];
+	float mAttemptProb[17];
+
+	VDD3DPresentHistory() : mPresentDelay(0.f), mVBlankSuccess(1.0f), mbPresentPending(false), mScanlineTarget(0) {
+		memset(&mSuccessProb, 0, sizeof mSuccessProb);
+		memset(&mAttemptProb, 0, sizeof mAttemptProb);
+	}
 };
 
-class VDD3D9Manager {
+class VDD3D9Manager : public vdlist_node {
 public:
 	VDD3D9Manager();
 	~VDD3D9Manager();
 
 	bool Attach(VDD3D9Client *pClient);
-	void Detach(VDD3D9Client *pClient);
+	bool Detach(VDD3D9Client *pClient);
 
+	VDThreadID				GetThreadID() const { return mThreadID; }
 	const D3DCAPS9&			GetCaps() const { return mDevCaps; }
 	IDirect3D9				*GetD3D() const { return mpD3D; }
 	IDirect3DDevice9		*GetDevice() const { return mpD3DDevice; }
@@ -124,6 +149,8 @@ public:
 	void		UnlockIndices();
 	bool		BeginScene();
 	bool		EndScene();
+	void		Flush();
+	void		Finish();
 	HRESULT		DrawArrays(D3DPRIMITIVETYPE type, UINT vertStart, UINT primCount);
 	HRESULT		DrawElements(D3DPRIMITIVETYPE type, UINT vertStart, UINT vertCount, UINT idxStart, UINT primCount);
 	HRESULT		Present(const RECT *srcRect, HWND hwndDest, bool vsync, float& syncDelta, VDD3DPresentHistory& history);
@@ -138,6 +165,10 @@ public:
 	bool		CreateSharedTexture(const char *name, IVDD3D9Texture **ppTexture) {
 		return CreateSharedTexture(name, VDRefCountObjectFactory<T, IVDD3D9TextureGenerator>, ppTexture);
 	}
+
+	bool		CreateSwapChain(int width, int height, IVDD3D9SwapChain **ppSwapChain);
+	void		SetSwapChainActive(IVDD3D9SwapChain *pSwapChain);
+	HRESULT		PresentSwapChain(IVDD3D9SwapChain *pSwapChain, const RECT *srcRect, HWND hwndDest, bool vsync, bool newframe, bool donotwait, float& syncDelta, VDD3DPresentHistory& history);
 
 protected:
 	bool Init();
@@ -157,6 +188,7 @@ protected:
 
 	static ATOM			sDevWndClass;
 	HWND				mhwndDevice;
+	VDThreadID			mThreadID;
 
 	bool				mbDeviceValid;
 	bool				mbInScene;
@@ -170,8 +202,7 @@ protected:
 	uint32					mIndexBufferPt;
 	uint32					mIndexBufferLockSize;
 
-	vdfastvector<IDirect3DVertexShader9 *>	mVertexShaders;
-	vdfastvector<IDirect3DPixelShader9 *>	mPixelShaders;
+	IVDD3D9SwapChain		*mpImplicitSwapChain;
 
 	D3DCAPS9				mDevCaps;
 	D3DPRESENT_PARAMETERS	mPresentParms;

@@ -785,6 +785,10 @@ DEFINE_TEST(String) {
 		CHECK(VDStringW(L"xyz").find(L'y', 1), 1);
 		CHECK(VDStringW(L"xyz").find(L'y', 2), VDStringW::npos);
 		CHECK(VDStringW(L"xyz").find(L'y', 3), VDStringW::npos);
+		CHECK(VDStringW(L"xyz").find(L'z', 0), 2);
+		CHECK(VDStringW(L"xyz").find(L'z', 1), 2);
+		CHECK(VDStringW(L"xyz").find(L'z', 2), 2);
+		CHECK(VDStringW(L"xyz").find(L'z', 3), VDStringW::npos);
 	}
 
 	// sprintf

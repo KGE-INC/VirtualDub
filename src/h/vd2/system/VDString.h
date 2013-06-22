@@ -93,6 +93,13 @@ public:
 		return n;
 	}
 
+	size_type find(value_type c, size_type pos = 0) const {
+		VDASSERT(pos <= (size_type)(mpEnd - mpBegin));
+		const void *p = memchr(mpBegin + pos, c, mpEnd - (mpBegin + pos));
+
+		return p ? (const value_type *)p - mpBegin : npos;
+	}
+
 protected:
 	value_type *mpBegin;
 	value_type *mpEnd;
@@ -401,13 +408,6 @@ public:
 	// 21.3.6 string operations
 	const_pointer		c_str() const		{ return mpBegin; }
 
-	size_type find(value_type c, size_type pos = 0) const {
-		VDASSERT(pos <= (size_type)(mpEnd - mpBegin));
-		const void *p = memchr(mpBegin + pos, c, mpEnd - (mpBegin + pos));
-
-		return p ? (const value_type *)p - mpBegin : npos;
-	}
-
 	this_type& sprintf(const value_type *format, ...);
 
 protected:
@@ -516,6 +516,13 @@ public:
 		return n;
 	}
 
+	size_type find(value_type c, size_type pos = 0) const {
+		VDASSERT(pos <= (size_type)(mpEnd - mpBegin));
+		const void *p = wmemchr(mpBegin + pos, c, mpEnd - (mpBegin + pos));
+
+		return p ? (const value_type *)p - mpBegin : npos;
+	}
+
 protected:
 	value_type *mpBegin;
 	value_type *mpEnd;
@@ -556,6 +563,12 @@ public:
 		: mpEOS(const_cast<value_type *>(sNull))
 	{
 		assign(s, n);
+	}
+
+	VDStringW(const value_type *s, const value_type *t)
+		: mpEOS(const_cast<value_type *>(sNull))
+	{
+		assign(s, t);
 	}
 
 	~VDStringW() {
@@ -822,13 +835,6 @@ public:
 
 	// 21.3.6 string operations
 	const_pointer		c_str() const		{ return mpBegin; }
-
-	size_type find(value_type c, size_type pos = 0) const {
-		VDASSERT(pos <= (size_type)(mpEnd - mpBegin));
-		const void *p = memchr(mpBegin + pos, c, mpEnd - (mpBegin + pos));
-
-		return p ? (const value_type *)p - mpBegin : npos;
-	}
 
 	this_type& sprintf(const value_type *format, ...);
 

@@ -192,7 +192,16 @@ static int sharpen_config(FilterActivation *fa, const FilterFunctions *ff, HWND 
 	}
 	cfd = (ConvoluteFilterData *)fa->filter_data;
 
-	lv = FilterGetSingleValue(hWnd, -cfd->m[0], 0, 64, "sharpen");
+	struct local {
+		static void Update(long value, void *pThis) {
+			ConvoluteFilterData *cfd = (ConvoluteFilterData *)pThis;
+			for(int i=0; i<9; i++)
+				if (i==4) cfd->m[4] = 256+8*value; else cfd->m[i]=-value;
+			cfd->bias = -value*4;
+		}
+	};
+
+	lv = FilterGetSingleValue(hWnd, -cfd->m[0], 0, 64, "sharpen", fa->ifp, local::Update, cfd);
 
 	for(i=0; i<9; i++)
 		if (i==4) cfd->m[4] = 256+8*lv; else cfd->m[i]=-lv;

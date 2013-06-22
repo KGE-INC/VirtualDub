@@ -226,7 +226,7 @@ void AVIOutputWAV::WriteHeader(bool initial) {
 		memcpy(buffer.alloc(24), dwHeader, 24);
 	} else {
 		dwHeader[0]	= FOURCC_RIFF;
-		dwHeader[1] = initial ? 0x7F000000 : (uint32)(mBytesWritten + mHeaderSize);
+		dwHeader[1] = initial ? 0x7F000000 : (uint32)(mBytesWritten + mHeaderSize - 8);
 		dwHeader[2] = mmioFOURCC('W', 'A', 'V', 'E');
 		dwHeader[3] = mmioFOURCC('f', 'm', 't', ' ');
 		dwHeader[4] = audioFmtLen;

@@ -74,7 +74,13 @@ static int threshold_config(FilterActivation *fa, const FilterFunctions *ff, HWN
 
 	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
 
-	mfd->threshold = FilterGetSingleValue(hWnd, mfd->threshold, 0, 256, "threshold");
+	struct local {
+		static void Update(long value, void *pThis) {
+			((MyFilterData *)pThis)->threshold = value;
+		}
+	};
+
+	mfd->threshold = FilterGetSingleValue(hWnd, mfd->threshold, 0, 256, "threshold", fa->ifp, local::Update, mfd);
 
 	return 0;
 }

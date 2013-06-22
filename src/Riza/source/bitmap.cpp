@@ -100,15 +100,25 @@ bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const
 }
 
 bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const vdstructex<BITMAPINFOHEADER>& src, int format, int variant, uint32 w, uint32 h) {
+	if (!VDMakeBitmapFormatFromPixmapFormat(dst, format, variant, w, h))
+		return false;
+
+	dst->biXPelsPerMeter = src->biXPelsPerMeter;
+	dst->biYPelsPerMeter = src->biYPelsPerMeter;
+
+	return true;
+}
+
+bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, int format, int variant, uint32 w, uint32 h) {
 	using namespace nsVDPixmap;
 
-	dst = src;
+	dst.resize(sizeof(BITMAPINFOHEADER));
 	dst->biSize				= sizeof(BITMAPINFOHEADER);
 	dst->biWidth			= w;
 	dst->biHeight			= h;
 	dst->biPlanes			= 1;
-	dst->biXPelsPerMeter	= src->biXPelsPerMeter;
-	dst->biYPelsPerMeter	= src->biYPelsPerMeter;
+	dst->biXPelsPerMeter	= 0;
+	dst->biYPelsPerMeter	= 0;
 
 	if (format == kPixFormat_Pal8) {
 		dst->biBitCount		= 8;
@@ -116,8 +126,6 @@ bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<BITMAPINFOHEADER>& dst, const
 		dst->biSizeImage	= ((w+3)&~3)*h;
 		return true;
 	}
-
-	dst.resize(sizeof(BITMAPINFOHEADER));
 
 	dst->biClrUsed			= 0;
 	dst->biClrImportant		= 0;

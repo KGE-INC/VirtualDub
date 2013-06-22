@@ -737,9 +737,11 @@ INT_PTR CALLBACK DubStatus::StatusDlgProc( HWND hdlg, UINT message, WPARAM wPara
 
 				guiResizeDlgItem(hdlg, IDC_PROGRESS, 0, yoffset, xoffset, 0);
 				guiResizeDlgItem(hdlg, IDC_PRIORITY, 0, yoffset, xoffset, 0);
+				guiResizeDlgItem(hdlg, IDC_LIMIT, 0, yoffset, xoffset, 0);
 				guiOffsetDlgItem(hdlg, IDC_ABORT, xoffset, yoffset);
 				guiOffsetDlgItem(hdlg, IDC_STATIC_PROGRESS, 0, yoffset);
 				guiOffsetDlgItem(hdlg, IDC_STATIC_PRIORITY, 0, yoffset);
+				guiOffsetDlgItem(hdlg, IDC_STATIC_LIMIT, 0, yoffset);
 				guiOffsetDlgItem(hdlg, IDC_DRAW_INPUT, 0, yoffset);
 				guiOffsetDlgItem(hdlg, IDC_DRAW_OUTPUT, 0, yoffset);
 				guiOffsetDlgItem(hdlg, IDC_DRAW_DOUTPUT, 0, yoffset);
@@ -768,6 +770,10 @@ INT_PTR CALLBACK DubStatus::StatusDlgProc( HWND hdlg, UINT message, WPARAM wPara
 					SendMessage(hwndItem, CB_ADDSTRING, 0, (LPARAM)g_szDubPriorities[i]);
 
 				SendMessage(hwndItem, CB_SETCURSEL, thisPtr->iPriority-1, 0);
+
+				hwndItem = GetDlgItem(hdlg, IDC_LIMIT);
+				SendMessage(hwndItem, TBM_SETRANGE, TRUE, MAKELONG(0, 10));
+				SendMessage(hwndItem, TBM_SETPOS, TRUE, (thisPtr->opt->mThrottlePercent + 5) / 10);
 
 				guiSetTitleW(hdlg, IDS_TITLE_STATUS, VDFileSplitPath(g_szInputAVIFile));
 
@@ -867,6 +873,9 @@ INT_PTR CALLBACK DubStatus::StatusDlgProc( HWND hdlg, UINT message, WPARAM wPara
 				}
 				break;
 
+			case IDC_LIMIT:
+				break;
+
 			case IDC_ABORT:
 				extern bool VDPreferencesIsRenderAbortConfirmEnabled();
 
@@ -887,6 +896,21 @@ INT_PTR CALLBACK DubStatus::StatusDlgProc( HWND hdlg, UINT message, WPARAM wPara
 				break;
             }
             break;
+
+		case WM_HSCROLL:
+			if (lParam) {
+				HWND hwndScroll = (HWND)lParam;
+				switch(GetWindowLong(hwndScroll, GWL_ID)) {
+				case IDC_LIMIT:
+					{
+						int pos = SendMessage(hwndScroll, TBM_GETPOS, 0, 0);
+
+						thisPtr->pDubber->SetThrottleFactor(pos / 10.0f);
+					}
+					break;
+				}
+			}
+			break;
     }
     return FALSE;
 }

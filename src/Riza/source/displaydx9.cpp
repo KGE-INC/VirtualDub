@@ -600,6 +600,10 @@ bool VDVideoDisplayDX9Manager::ValidateBicubicShader(CubicMode mode) {
 
 	// Validate shaders.
 	IDirect3DDevice9 *pDevice = mpManager->GetDevice();
+	HRESULT hr = pDevice->SetFVF(D3DFVF_XYZ | D3DFVF_DIFFUSE | D3DFVF_TEX2);
+	if (FAILED(hr))
+		return false;
+
 	const PassInfo *pPasses = pTechInfo->mpPasses;
 	for(uint32 stage = 0; stage < pTechInfo->mPassCount; ++stage) {
 		const PassInfo& pi = *pPasses++;
@@ -613,7 +617,7 @@ bool VDVideoDisplayDX9Manager::ValidateBicubicShader(CubicMode mode) {
 			if (tokenValue == 0xFFF)
 				tokenValue = g_states[++stateIdx];
 
-			HRESULT hr = S_OK;
+			hr = S_OK;
 			switch(token >> 28) {
 				case 0:		// render state
 					hr = pDevice->SetRenderState((D3DRENDERSTATETYPE)tokenIndex, tokenValue);
@@ -1467,9 +1471,11 @@ protected:
 	bool ModifySource(const VDVideoDisplaySourceInfo& info);
 
 	bool IsValid();
+	bool IsFramePending() { return false; }
 	void SetFilterMode(FilterMode mode);
 
 	bool Tick(int id);
+	void Poll();
 	bool Resize();
 	bool Update(UpdateMode);
 	void Refresh(UpdateMode);
@@ -1485,14 +1491,24 @@ protected:
 
 	void InitBicubic();
 	void ShutdownBicubic();
-	bool RunEffect(const RECT& rClient, const PassInfo *pPasses, uint32 nPasses, bool forceTrueSource, IDirect3DSurface9 *pRTOverride);
+
+	bool UpdateBackbuffer(const RECT& rClient);
+	bool UpdateScreen(const RECT& rClient, UpdateMode updateMode, bool polling);
 
 	HWND				mhwnd;
+	RECT				mrClient;
 	VDD3D9Manager		*mpManager;
 	vdrefptr<VDVideoDisplayDX9Manager>	mpVideoManager;
 	IDirect3DDevice9	*mpD3DDevice;			// weak ref
 
 	vdrefptr<VDVideoUploadContextD3D9>	mpUploadContext;
+
+	vdrefptr<IVDD3D9SwapChain>	mpSwapChain;
+	int					mSwapChainW;
+	int					mSwapChainH;
+	bool				mbSwapChainImageValid;
+	bool				mbSwapChainPresentPending;
+	bool				mbFirstPresent;
 
 	VDVideoDisplayDX9Manager::CubicMode	mCubicMode;
 	bool				mbCubicInitialized;
@@ -1517,11 +1533,16 @@ IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverDX9() {
 
 VDVideoDisplayMinidriverDX9::VDVideoDisplayMinidriverDX9()
 	: mpVideoManager(NULL)
+	, mSwapChainW(0)
+	, mSwapChainH(0)
+	, mbSwapChainImageValid(false)
+	, mbSwapChainPresentPending(false)
 	, mbCubicInitialized(false)
 	, mbCubicAttempted(false)
 	, mPreferredFilter(kFilterAnySuitable)
 	, mSyncDelta(0.0f)
 {
+	mrClient.top = mrClient.left = mrClient.right = mrClient.bottom = 0;
 }
 
 VDVideoDisplayMinidriverDX9::~VDVideoDisplayMinidriverDX9() {
@@ -1530,6 +1551,7 @@ VDVideoDisplayMinidriverDX9::~VDVideoDisplayMinidriverDX9() {
 bool VDVideoDisplayMinidriverDX9::Init(HWND hwnd, const VDVideoDisplaySourceInfo& info) {
 	mhwnd = hwnd;
 	mSource = info;
+	GetClientRect(hwnd, &mrClient);
 
 	// attempt to initialize D3D9
 	mpManager = VDInitDirect3D9(this);
@@ -1552,12 +1574,16 @@ bool VDVideoDisplayMinidriverDX9::Init(HWND hwnd, const VDVideoDisplaySourceInfo
 	}
 
 	mSyncDelta = 0.0f;
+	mbFirstPresent = true;
 
 	return true;
 }
 
 void VDVideoDisplayMinidriverDX9::OnPreDeviceReset() {
 	ShutdownBicubic();
+	mpSwapChain = NULL;
+	mSwapChainW = 0;
+	mSwapChainH = 0;
 }
 
 void VDVideoDisplayMinidriverDX9::InitBicubic() {
@@ -1598,6 +1624,10 @@ void VDVideoDisplayMinidriverDX9::Shutdown() {
 
 	ShutdownBicubic();
 
+	mpSwapChain = NULL;
+	mSwapChainW = 0;
+	mSwapChainH = 0;
+
 	mpVideoManager = NULL;
 
 	if (mpManager) {
@@ -1609,8 +1639,7 @@ void VDVideoDisplayMinidriverDX9::Shutdown() {
 }
 
 bool VDVideoDisplayMinidriverDX9::ModifySource(const VDVideoDisplaySourceInfo& info) {
-	if (mSource.pixmap.w == info.pixmap.w && mSource.pixmap.h == info.pixmap.h && mSource.pixmap.format == info.pixmap.format && mSource.pixmap.pitch == info.pixmap.pitch
-		&& !mSource.bPersistent) {
+	if (mSource.pixmap.w == info.pixmap.w && mSource.pixmap.h == info.pixmap.h && mSource.pixmap.format == info.pixmap.format && mSource.pixmap.pitch == info.pixmap.pitch) {
 		mSource = info;
 		return true;
 	}
@@ -1632,7 +1661,14 @@ bool VDVideoDisplayMinidriverDX9::Tick(int id) {
 	return true;
 }
 
+void VDVideoDisplayMinidriverDX9::Poll() {
+	if (mbSwapChainPresentPending)
+		UpdateScreen(mrClient, kModeVSync, false);
+}
+
 bool VDVideoDisplayMinidriverDX9::Resize() {
+	mbSwapChainImageValid = false;
+	GetClientRect(mhwnd, &mrClient);
 	return true;
 }
 
@@ -1652,24 +1688,54 @@ bool VDVideoDisplayMinidriverDX9::Update(UpdateMode mode) {
 			break;
 	}
 
-	return mpUploadContext->Update(mSource.pixmap, fieldMask);
+	if (!mpUploadContext->Update(mSource.pixmap, fieldMask))
+		return false;
+
+	mbSwapChainImageValid = false;
+
+	return true;
 }
 
 void VDVideoDisplayMinidriverDX9::Refresh(UpdateMode mode) {
-	if (HDC hdc = GetDC(mhwnd)) {
-		RECT r;
-		GetClientRect(mhwnd, &r);
-		Paint(hdc, r, mode);
-		ReleaseDC(mhwnd, hdc);
-	}
+	if (mrClient.right > 0 && mrClient.bottom > 0)
+		Paint(NULL, mrClient, mode);
 }
 
-bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient, UpdateMode updateMode) {
-	const RECT rClippedClient={0,0,std::min<int>(rClient.right, mpManager->GetMainRTWidth()), std::min<int>(rClient.bottom, mpManager->GetMainRTHeight())};
+bool VDVideoDisplayMinidriverDX9::Paint(HDC, const RECT& rClient, UpdateMode updateMode) {
+	return (mbSwapChainImageValid || UpdateBackbuffer(rClient)) && UpdateScreen(rClient, updateMode, false);
+}
+
+void VDVideoDisplayMinidriverDX9::SetLogicalPalette(const uint8 *pLogicalPalette) {
+}
+
+bool VDVideoDisplayMinidriverDX9::UpdateBackbuffer(const RECT& rClient) {
+	int rtw = mpManager->GetMainRTWidth();
+	int rth = mpManager->GetMainRTHeight();
+	const RECT rClippedClient={0,0,std::min<int>(rClient.right, rtw), std::min<int>(rClient.bottom, rth)};
 
 	// Make sure the device is sane.
 	if (!mpManager->CheckDevice())
 		return false;
+
+	// Check if we need to create or resize the swap chain.
+	if (mSwapChainW >= rClippedClient.right + 128 || mSwapChainH >= rClippedClient.bottom + 128) {
+		mpSwapChain = NULL;
+		mSwapChainW = 0;
+		mSwapChainH = 0;
+	}
+
+	if (!mpSwapChain || mSwapChainW < rClippedClient.right || mSwapChainH < rClippedClient.bottom) {
+		int scw = std::min<int>((rClippedClient.right + 127) & ~127, rtw);
+		int sch = std::min<int>((rClippedClient.bottom + 127) & ~127, rth);
+
+		VDDEBUG("Resizing swap chain to %dx%d\n", scw, sch);
+
+		if (!mpManager->CreateSwapChain(scw, sch, ~mpSwapChain))
+			return false;
+
+		mSwapChainW = scw;
+		mSwapChainH = sch;
+	}
 
 	// Do we need to switch bicubic modes?
 	FilterMode mode = mPreferredFilter;
@@ -1724,6 +1790,14 @@ bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient, UpdateMode
 	ctx.mSourceTexW = desc.Width;
 	ctx.mSourceTexH = desc.Height;
 
+	vdrefptr<IDirect3DSurface9> pRTMain;
+	IDirect3DSwapChain9 *sc = mpSwapChain->GetD3DSwapChain();
+	hr = sc->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, ~pRTMain);
+	if (FAILED(hr))
+		return false;
+
+	mbSwapChainImageValid = false;
+
 	if (mbCubicInitialized &&
 		(uint32)rClient.right <= pparms.BackBufferWidth &&
 		(uint32)rClient.bottom <= pparms.BackBufferHeight &&
@@ -1733,46 +1807,79 @@ bool VDVideoDisplayMinidriverDX9::Paint(HDC hdc, const RECT& rClient, UpdateMode
 	{
 		switch(mCubicMode) {
 		case VDVideoDisplayDX9Manager::kCubicUsePS1_4Path:
-			bSuccess = mpVideoManager->RunEffect(ctx, rClient, g_technique_bicubic1_4, NULL);
+			bSuccess = mpVideoManager->RunEffect(ctx, rClient, g_technique_bicubic1_4, pRTMain);
 			break;
 		case VDVideoDisplayDX9Manager::kCubicUsePS1_1Path:
-			bSuccess = mpVideoManager->RunEffect(ctx, rClient, g_technique_bicubic1_1, NULL);
+			bSuccess = mpVideoManager->RunEffect(ctx, rClient, g_technique_bicubic1_1, pRTMain);
 			break;
 		case VDVideoDisplayDX9Manager::kCubicUseFF3Path:
-			bSuccess = mpVideoManager->RunEffect(ctx, rClient, g_technique_bicubicFF3, NULL);
+			bSuccess = mpVideoManager->RunEffect(ctx, rClient, g_technique_bicubicFF3, pRTMain);
 			break;
 		case VDVideoDisplayDX9Manager::kCubicUseFF2Path:
-			bSuccess = mpVideoManager->RunEffect(ctx, rClient, g_technique_bicubicFF2, NULL);
+			bSuccess = mpVideoManager->RunEffect(ctx, rClient, g_technique_bicubicFF2, pRTMain);
 			break;
 		}
 	} else {
 		if (mPreferredFilter == kFilterPoint)
-			bSuccess = mpVideoManager->RunEffect(ctx, rClient, g_technique_point, NULL);
+			bSuccess = mpVideoManager->RunEffect(ctx, rClient, g_technique_point, pRTMain);
 		else
-			bSuccess = mpVideoManager->RunEffect(ctx, rClient, g_technique_bilinear, NULL);
+			bSuccess = mpVideoManager->RunEffect(ctx, rClient, g_technique_bilinear, pRTMain);
 
 		bSuccess = true;
 	}
 
+	pRTMain = NULL;
+
 	if (bSuccess && !mpManager->EndScene())
 		bSuccess = false;
 
+	mpManager->Flush();
+	mpManager->SetSwapChainActive(NULL);
+
 	hr = E_FAIL;
 
-	if (bSuccess)
-		hr = mpManager->Present(&rClient, mhwnd, (updateMode & kModeVSync) != 0, mSyncDelta, mPresentHistory);
+	if (!bSuccess) {
+		VDDEBUG_DX9DISP("VideoDisplay/DX9: Render failed -- applying boot to the head.\n");
+
+		// TODO: Need to free all DEFAULT textures before proceeding
+
+		if (!mpManager->Reset())
+			return false;
+
+	} else {
+		mbSwapChainImageValid = true;
+		mbSwapChainPresentPending = true;
+	}
+
+	return bSuccess;
+}
+
+bool VDVideoDisplayMinidriverDX9::UpdateScreen(const RECT& rClient, UpdateMode updateMode, bool polling) {
+	if (!mbSwapChainImageValid)
+		return false;
+
+	HRESULT hr = mpManager->PresentSwapChain(mpSwapChain, &rClient, mhwnd, (updateMode & kModeVSync) != 0, !polling, true, mSyncDelta, mPresentHistory);
+
+	if (hr == S_FALSE)
+		return true;
+
+	// Workaround for Windows Vista DWM composition chain not updating.
+	if (mbFirstPresent) {
+		SetWindowPos(mhwnd, NULL, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE|SWP_NOZORDER|SWP_FRAMECHANGED);
+		mbFirstPresent = false;
+	}
+
+	mbSwapChainPresentPending = false;
 
 	if (FAILED(hr)) {
 		VDDEBUG_DX9DISP("VideoDisplay/DX9: Render failed -- applying boot to the head.\n");
 
 		// TODO: Need to free all DEFAULT textures before proceeding
 
-		if (mpManager->Reset())
-			return S_OK;
-	}
+		if (!mpManager->Reset())
+			return false;
+	} else
+		mSource.mpCB->RequestNextFrame();
 
-	return SUCCEEDED(hr);
-}
-
-void VDVideoDisplayMinidriverDX9::SetLogicalPalette(const uint8 *pLogicalPalette) {
+	return true;
 }

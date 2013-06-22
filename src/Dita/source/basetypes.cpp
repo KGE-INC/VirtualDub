@@ -111,6 +111,8 @@ namespace {
 VDUIWindow::VDUIWindow()
 	: mpParent(NULL)
 	, mpBase(NULL)
+	, mID(0)
+	, mArea(0, 0, 0, 0)
 	, mMinSize(0,0)
 	, mMaxSize(0,0)
 	, mMargins(0)

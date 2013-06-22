@@ -8,7 +8,8 @@
 #include <map>
 
 class VDExternalModule;
-struct VDPluginInfo;
+struct VDXPluginInfo;
+typedef VDXPluginInfo VDPluginInfo;
 
 struct VDPluginDescription {
 	VDStringW			mName;

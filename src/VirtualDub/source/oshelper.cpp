@@ -23,6 +23,7 @@
 #include <vd2/system/filesys.h>
 #include <vd2/system/zip.h>
 #include <vd2/system/Error.h>
+#include <vd2/system/w32assist.h>
 #include "oshelper.h"
 
 extern const char g_szError[];
@@ -182,12 +183,6 @@ BOOL SetConfigDword(const char *szKeyName, const char *szValueName, DWORD dwData
 //	help support
 //
 ///////////////////////////////////////////////////////////////////////////
-
-static bool VDIsWindowsNT() {
-	static bool bIsNT = (LONG)GetVersion() >= 0;
-
-	return bIsNT;
-}
 
 VDStringW VDGetHelpPath() {
 	return VDMakePath(VDGetProgramPath().c_str(), L"VirtualDub.chm");

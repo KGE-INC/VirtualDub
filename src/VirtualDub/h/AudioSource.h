@@ -86,6 +86,10 @@ public:
 	void streamBegin(bool fRealTime, bool bForceReset);
 	void streamEnd();
 
+	ErrorMode getDecodeErrorMode() { return mErrorMode; }
+	void setDecodeErrorMode(ErrorMode mode) { mErrorMode = mode; }
+	bool isDecodeErrorModeSupported(ErrorMode mode) { return mode == kErrorModeConceal || mode == kErrorModeReportAll; }
+
 	bool init();
 	int _read(VDPosition lStart, uint32 lCount, void *lpBuffer, uint32 cbBuffer, uint32 *lSamplesRead, uint32 *lBytesRead);
 
@@ -102,6 +106,7 @@ protected:
 
 	IAVIReadStream *mpStream;
 	bool bQuiet;
+	ErrorMode	mErrorMode;
 	uint32	mSamplesPerSet;
 	sint32	mRightChannelOffset;
 	VDPosition mLastFrame;

@@ -22,6 +22,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <vd2/system/atomic.h>
+#include <vd2/system/thread.h>
+#include <vd2/system/vdalloc.h>
 #include <vd2/system/vdtypes.h>
 #include <vd2/system/VDString.h>
 #include <vd2/system/w32assist.h>
@@ -66,12 +68,501 @@ namespace {
 
 ///////////////////////////////////////////////////////////////////////////
 
-class VDVideoDisplayWindow : public IVDVideoDisplay {
+class VDVideoDisplayManager;
+
+class VDVideoDisplayClient : public vdlist_node {
+public:
+	VDVideoDisplayClient();
+	~VDVideoDisplayClient();
+
+	void Attach(VDVideoDisplayManager *pManager);
+	void Detach(VDVideoDisplayManager *pManager);
+	void SetPreciseMode(bool enabled);
+	void SetPeriodicTimer();
+
+	const uint8 *GetLogicalPalette() const;
+	HPALETTE	GetPalette() const;
+	void RemapPalette();
+
+	virtual void OnTick() {}
+	virtual void OnDisplayChange() {}
+	virtual void OnForegroundChange(bool foreground) {}
+	virtual void OnRealizePalette() {}
+
+protected:
+	VDVideoDisplayManager	*mpManager;
+
+	bool	mbPreciseMode;
+	uint32	mLastTick;
+};
+
+class VDVideoDisplayManager : public VDThread {
+public:
+	VDVideoDisplayManager();
+	~VDVideoDisplayManager();
+
+	bool	Init();
+
+	void	RemoteCall(void (*function)(void *), void *data);
+
+	void	AddClient(VDVideoDisplayClient *pClient);
+	void	RemoveClient(VDVideoDisplayClient *pClient);
+	void	ModifyPreciseMode(bool enabled);
+
+	void RemapPalette();
+	HPALETTE	GetPalette() const { return mhPalette; }
+	const uint8 *GetLogicalPalette() const { return mLogicalPalette; }
+
+protected:
+	void	ThreadRun();
+
+	bool	RegisterWindowClass();
+	void	UnregisterWindowClass();
+
+	bool	IsDisplayPaletted();
+	void	CreateDitheringPalette();
+	void	DestroyDitheringPalette();
+	static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+	LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+	int		mPreciseModeCount;
+	uint32	mPreciseModePeriod;
+
+	HPALETTE	mhPalette;
+	ATOM		mWndClass;
+	HWND		mhwnd;
+
+	bool		mbAppActive;
+
+	typedef vdlist<VDVideoDisplayClient> Clients;
+	Clients		mClients;
+
+	VDSignal			mStarted;
+	VDCriticalSection	mMutex;
+
+	struct RemoteCallNode : vdlist_node {
+		void (*mpFunction)(void *data);
+		void *mpData;
+		VDSignal mSignal;
+	};
+
+	typedef vdlist<RemoteCallNode> RemoteCalls;
+	RemoteCalls	mRemoteCalls;
+
+	uint8	mLogicalPalette[256];
+};
+
+///////////////////////////////////////////////////////////////////////////
+
+VDVideoDisplayClient::VDVideoDisplayClient()
+	: mpManager(NULL)
+	, mbPreciseMode(false)
+{
+}
+
+VDVideoDisplayClient::~VDVideoDisplayClient() {
+}
+
+void VDVideoDisplayClient::Attach(VDVideoDisplayManager *pManager) {
+	VDASSERT(!mpManager);
+	mpManager = pManager;
+	if (mbPreciseMode)
+		mpManager->ModifyPreciseMode(true);
+}
+
+void VDVideoDisplayClient::Detach(VDVideoDisplayManager *pManager) {
+	VDASSERT(mpManager == pManager);
+	if (mbPreciseMode)
+		mpManager->ModifyPreciseMode(false);
+	mpManager = NULL;
+}
+
+void VDVideoDisplayClient::SetPreciseMode(bool enabled) {
+	if (mbPreciseMode == enabled)
+		return;
+
+	mbPreciseMode = enabled;
+	mpManager->ModifyPreciseMode(enabled);
+}
+
+const uint8 *VDVideoDisplayClient::GetLogicalPalette() const {
+	return mpManager->GetLogicalPalette();
+}
+
+HPALETTE VDVideoDisplayClient::GetPalette() const {
+	return mpManager->GetPalette();
+}
+
+void VDVideoDisplayClient::RemapPalette() {
+	mpManager->RemapPalette();
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+VDVideoDisplayManager::VDVideoDisplayManager()
+	: mPreciseModeCount(0)
+	, mPreciseModePeriod(0)
+	, mhPalette(NULL)
+	, mWndClass(NULL)
+	, mhwnd(NULL)
+	, mbAppActive(false)
+{
+}
+
+VDVideoDisplayManager::~VDVideoDisplayManager() {
+	VDASSERT(mClients.empty());
+
+	if (isThreadAttached()) {
+		PostThreadMessage(getThreadID(), WM_QUIT, 0, 0);
+		ThreadWait();
+	}
+}
+
+bool VDVideoDisplayManager::Init() {
+	ThreadStart();
+	mStarted.wait();
+	return true;
+}
+
+void VDVideoDisplayManager::RemoteCall(void (*function)(void *), void *data) {
+	RemoteCallNode node;
+	node.mpFunction = function;
+	node.mpData = data;
+
+	vdsynchronized(mMutex) {
+		mRemoteCalls.push_back(&node);
+	}
+
+	PostThreadMessage(getThreadID(), WM_NULL, 0, 0);
+
+	HANDLE h = node.mSignal.getHandle();
+	for(;;) {
+		DWORD dwResult = MsgWaitForMultipleObjects(1, &h, FALSE, INFINITE, QS_SENDMESSAGE);
+
+		if (dwResult != WAIT_OBJECT_0+1)
+			break;
+
+		MSG msg;
+		while(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE | PM_QS_SENDMESSAGE)) {
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+	}
+}
+
+void VDVideoDisplayManager::AddClient(VDVideoDisplayClient *pClient) {
+	mClients.push_back(pClient);
+	pClient->Attach(this);
+}
+
+void VDVideoDisplayManager::RemoveClient(VDVideoDisplayClient *pClient) {
+	pClient->Detach(this);
+	mClients.erase(mClients.fast_find(pClient));
+}
+
+void VDVideoDisplayManager::ModifyPreciseMode(bool enabled) {
+	if (enabled) {
+		int rc = ++mPreciseModeCount;
+		VDASSERT(rc < 100000);
+		if (rc == 1) {
+			TIMECAPS tc;
+			if (!mPreciseModePeriod &&
+				TIMERR_NOERROR == ::timeGetDevCaps(&tc, sizeof tc) &&
+				TIMERR_NOERROR == ::timeBeginPeriod(tc.wPeriodMin))
+			{
+				mPreciseModePeriod = tc.wPeriodMin;
+				SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+			}
+		}
+	} else {
+		int rc = --mPreciseModeCount;
+		VDASSERT(rc >= 0);
+		if (!rc) {
+			if (mPreciseModePeriod) {
+				timeEndPeriod(mPreciseModePeriod);
+				mPreciseModePeriod = 0;
+			}
+		}
+	}
+}
+
+void VDVideoDisplayManager::ThreadRun() {
+	if (RegisterWindowClass()) {
+		mhwnd = CreateWindowEx(WS_EX_NOPARENTNOTIFY, (LPCTSTR)mWndClass, "", WS_OVERLAPPEDWINDOW, 0, 0, 0, 0, NULL, NULL, VDGetLocalModuleHandleW32(), this);
+
+		if (mhwnd) {
+			MSG msg;
+			PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE);
+			mStarted.signal();
+
+			for(;;) {
+				DWORD ret = MsgWaitForMultipleObjects(0, NULL, TRUE, 1, QS_ALLINPUT);
+
+				if (ret == WAIT_OBJECT_0) {
+					bool success = false;
+					while(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+						if (msg.message == WM_QUIT)
+							goto xit;
+						success = true;
+						TranslateMessage(&msg);
+						DispatchMessage(&msg);
+					}
+
+					vdsynchronized(mMutex) {
+						while(!mRemoteCalls.empty()) {
+							RemoteCallNode *rcn = mRemoteCalls.back();
+							mRemoteCalls.pop_back();
+							rcn->mpFunction(rcn->mpData);
+							rcn->mSignal.signal();
+						}
+					}
+
+					if (success)
+						continue;
+
+					ret = WAIT_TIMEOUT;
+					::Sleep(1);
+				}
+				
+				if (ret == WAIT_TIMEOUT) {
+					Clients::iterator it(mClients.begin()), itEnd(mClients.end());
+					for(; it!=itEnd; ++it) {
+						VDVideoDisplayClient *pClient = *it;
+
+						pClient->OnTick();
+					}
+				} else
+					break;
+			}
+xit:
+			DestroyWindow(mhwnd);
+			mhwnd = NULL;
+		}
+	}
+	UnregisterWindowClass();
+}
+
+bool VDVideoDisplayManager::RegisterWindowClass() {
+	WNDCLASS wc;
+	HMODULE hInst = VDGetLocalModuleHandleW32();
+
+	wc.style			= 0;
+	wc.lpfnWndProc		= StaticWndProc;
+	wc.cbClsExtra		= 0;
+	wc.cbWndExtra		= sizeof(VDVideoDisplayManager *);
+	wc.hInstance		= hInst;
+	wc.hIcon			= 0;
+	wc.hCursor			= 0;
+	wc.hbrBackground	= 0;
+	wc.lpszMenuName		= 0;
+
+	char buf[64];
+	sprintf(buf, "VDVideoDisplayManager(%p)", this);
+	wc.lpszClassName	= buf;
+
+	mWndClass = RegisterClass(&wc);
+
+	return mWndClass != NULL;
+}
+
+void VDVideoDisplayManager::UnregisterWindowClass() {
+	if (mWndClass) {
+		HMODULE hInst = VDGetLocalModuleHandleW32();
+		UnregisterClass((LPCTSTR)mWndClass, hInst);
+		mWndClass = NULL;
+	}
+}
+
+void VDVideoDisplayManager::RemapPalette() {
+	PALETTEENTRY pal[216];
+	struct {
+		LOGPALETTE hdr;
+		PALETTEENTRY palext[255];
+	} physpal;
+
+	physpal.hdr.palVersion = 0x0300;
+	physpal.hdr.palNumEntries = 256;
+
+	int i;
+
+	for(i=0; i<216; ++i) {
+		pal[i].peRed	= (BYTE)((i / 36) * 51);
+		pal[i].peGreen	= (BYTE)(((i%36) / 6) * 51);
+		pal[i].peBlue	= (BYTE)((i%6) * 51);
+	}
+
+	for(i=0; i<256; ++i) {
+		physpal.hdr.palPalEntry[i].peRed	= 0;
+		physpal.hdr.palPalEntry[i].peGreen	= 0;
+		physpal.hdr.palPalEntry[i].peBlue	= (BYTE)i;
+		physpal.hdr.palPalEntry[i].peFlags	= PC_EXPLICIT;
+	}
+
+	if (HDC hdc = GetDC(0)) {
+		GetSystemPaletteEntries(hdc, 0, 256, physpal.hdr.palPalEntry);
+		ReleaseDC(0, hdc);
+	}
+
+	if (HPALETTE hpal = CreatePalette(&physpal.hdr)) {
+		for(i=0; i<216; ++i) {
+			mLogicalPalette[i] = (uint8)GetNearestPaletteIndex(hpal, RGB(pal[i].peRed, pal[i].peGreen, pal[i].peBlue));
+		}
+
+		DeleteObject(hpal);
+	}
+}
+
+bool VDVideoDisplayManager::IsDisplayPaletted() {
+	bool bPaletted = false;
+
+	if (HDC hdc = GetDC(0)) {
+		if (GetDeviceCaps(hdc, BITSPIXEL) <= 8)		// RC_PALETTE doesn't seem to be set if you switch to 8-bit in Win98 without rebooting.
+			bPaletted = true;
+		ReleaseDC(0, hdc);
+	}
+
+	return bPaletted;
+}
+
+void VDVideoDisplayManager::CreateDitheringPalette() {
+	if (mhPalette)
+		return;
+
+	struct {
+		LOGPALETTE hdr;
+		PALETTEENTRY palext[255];
+	} pal;
+
+	pal.hdr.palVersion = 0x0300;
+	pal.hdr.palNumEntries = 216;
+
+	for(int i=0; i<216; ++i) {
+		pal.hdr.palPalEntry[i].peRed	= (BYTE)((i / 36) * 51);
+		pal.hdr.palPalEntry[i].peGreen	= (BYTE)(((i%36) / 6) * 51);
+		pal.hdr.palPalEntry[i].peBlue	= (BYTE)((i%6) * 51);
+		pal.hdr.palPalEntry[i].peFlags	= 0;
+	}
+
+	mhPalette = CreatePalette(&pal.hdr);
+}
+
+void VDVideoDisplayManager::DestroyDitheringPalette() {
+	if (mhPalette) {
+		DeleteObject(mhPalette);
+		mhPalette = NULL;
+	}
+}
+
+LRESULT CALLBACK VDVideoDisplayManager::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	if (msg == WM_NCCREATE) {
+		const CREATESTRUCT& cs = *(const CREATESTRUCT *)lParam;
+
+		SetWindowLongPtr(hwnd, 0, (LONG_PTR)cs.lpCreateParams);
+	} else {
+		VDVideoDisplayManager *pThis = (VDVideoDisplayManager *)GetWindowLongPtr(hwnd, 0);
+
+		if (pThis)
+			return pThis->WndProc(hwnd, msg, wParam, lParam);
+	}
+
+	return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+LRESULT CALLBACK VDVideoDisplayManager::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	switch(msg) {
+		case WM_CREATE:
+			SetTimer(hwnd, 100, 500, NULL);
+			break;
+
+		case WM_TIMER:
+			{
+				bool appActive = VDIsForegroundTask();
+
+				if (mbAppActive != appActive) {
+					mbAppActive = appActive;
+
+					for(Clients::iterator it(mClients.begin()), itEnd(mClients.end()); it!=itEnd; ++it) {
+						VDVideoDisplayClient *p = *it;
+
+						p->OnForegroundChange(appActive);
+					}
+				}
+			}
+			break;
+
+		case WM_DISPLAYCHANGE:
+			{
+				bool bPaletted = IsDisplayPaletted();
+
+				if (bPaletted)
+					CreateDitheringPalette();
+
+				for(Clients::iterator it(mClients.begin()), itEnd(mClients.end()); it!=itEnd; ++it) {
+					VDVideoDisplayClient *p = *it;
+
+					p->OnDisplayChange();
+				}
+
+				if (!bPaletted)
+					DestroyDitheringPalette();
+			}
+			break;
+
+		// Yes, believe it or not, we still support palettes, even when DirectDraw is active.
+		// Why?  Very occasionally, people still have to run in 8-bit mode, and a program
+		// should still display something half-decent in that case.  Besides, it's kind of
+		// neat to be able to dither in safe mode.
+		case WM_PALETTECHANGED:
+			{
+				DWORD dwProcess;
+
+				GetWindowThreadProcessId((HWND)wParam, &dwProcess);
+
+				if (dwProcess != GetCurrentProcessId()) {
+					for(Clients::iterator it(mClients.begin()), itEnd(mClients.end()); it!=itEnd; ++it) {
+						VDVideoDisplayClient *p = *it;
+
+						p->OnRealizePalette();
+					}
+				}
+			}
+			break;
+	}
+
+	return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+VDVideoDisplayFrame::VDVideoDisplayFrame()
+	: mRefCount(0)
+{
+}
+
+VDVideoDisplayFrame::~VDVideoDisplayFrame() {
+}
+
+int VDVideoDisplayFrame::AddRef() {
+	return ++mRefCount;
+}
+
+int VDVideoDisplayFrame::Release() {
+	int rc = --mRefCount;
+
+	if (!rc)
+		delete this;
+
+	return rc;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+class VDVideoDisplayWindow : public IVDVideoDisplay, public IVDVideoDisplayMinidriverCallback, public VDVideoDisplayClient {
 public:
 	static ATOM Register();
 
 protected:
-	VDVideoDisplayWindow(HWND hwnd);
+	VDVideoDisplayWindow(HWND hwnd, const CREATESTRUCT& createInfo);
 	~VDVideoDisplayWindow();
 
 	void SetSourceMessage(const wchar_t *msg);
@@ -79,8 +570,12 @@ protected:
 	bool SetSource(bool bAutoUpdate, const VDPixmap& src, void *pSharedObject, ptrdiff_t sharedOffset, bool bAllowConversion, bool bInterlaced);
 	bool SetSourcePersistent(bool bAutoUpdate, const VDPixmap& src, bool bAllowConversion, bool bInterlaced);
 	void SetSourceSubrect(const vdrect32 *r);
+	void SetSourceSolidColor(uint32 color);
+	void PostBuffer(VDVideoDisplayFrame *);
+	bool RevokeBuffer(VDVideoDisplayFrame **ppFrame);
+	void FlushBuffers();
 	void Update(int);
-	void PostUpdate(int);
+	void Destroy();
 	void Reset();
 	void Cache();
 	void SetCallback(IVDVideoDisplayCallback *pcb);
@@ -89,6 +584,17 @@ protected:
 	void SetFilterMode(FilterMode mode);
 	float GetSyncDelta() const { return mSyncDelta; }
 
+	void OnTick() {
+		if (mpMiniDriver)
+			mpMiniDriver->Poll();
+	}
+
+protected:
+	void ReleaseActiveFrame();
+	void RequestNextFrame();
+	void DispatchNextFrame();
+
+protected:
 	static LRESULT CALLBACK StaticChildWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	LRESULT ChildWndProc(UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -101,20 +607,16 @@ protected:
 	void SyncSetSourceMessage(const wchar_t *);
 	bool SyncSetSource(bool bAutoUpdate, const VDVideoDisplaySourceInfo& params);
 	void SyncReset();
-	bool SyncInit(bool bAutoRefresh);
+	bool SyncInit(bool bAutoRefresh, bool bAllowNonpersistentSource);
 	void SyncUpdate(int);
 	void SyncCache();
-	void SyncDisplayChange();
-	void SyncForegroundChange(bool bForeground);
-	void SyncRealizePalette();
+	void SyncSetFilterMode(FilterMode mode);
+	void OnDisplayChange();
+	void OnForegroundChange(bool bForeground);
+	void OnRealizePalette();
 	bool InitMiniDriver();
 	void ShutdownMiniDriver();
 	void VerifyDriverResult(bool result);
-	static void StaticRemapPalette();
-	static bool StaticCheckPaletted();
-	static void StaticCreatePalette();
-
-	static LRESULT CALLBACK StaticLookoutWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 protected:
 	enum {
@@ -125,6 +627,10 @@ protected:
 	HWND		mhwndChild;
 	HPALETTE	mhOldPalette;
 
+	VDCriticalSection			mMutex;
+	vdlist<VDVideoDisplayFrame>	mPendingFrames;
+	vdlist<VDVideoDisplayFrame>	mIdleFrames;
+	VDVideoDisplayFrame			*mpActiveFrame;
 	VDVideoDisplaySourceInfo	mSource;
 
 	IVDVideoDisplayMinidriver *mpMiniDriver;
@@ -138,19 +644,17 @@ protected:
 	FilterMode	mFilterMode;
 	bool	mbLockAcceleration;
 
+	bool		mbIgnoreMouse;
 	bool		mbUseSubrect;
 	vdrect32	mSourceSubrect;
 	VDStringW	mMessage;
+
+	uint32		mSolidColorBuffer;
 
 	VDPixmapBuffer		mCachedImage;
 
 	uint32	mSourcePalette[256];
 
-	typedef std::vector<VDVideoDisplayWindow *> tDisplayWindows;
-	static tDisplayWindows	sDisplayWindows;
-	static HWND				shwndLookout;
-	static HPALETTE			shPalette;
-	static uint8			sLogicalPalette[256];
 	static ATOM				sChildWindowClass;
 
 public:
@@ -162,10 +666,6 @@ public:
 	static bool		sbEnableTS;
 };
 
-VDVideoDisplayWindow::tDisplayWindows	VDVideoDisplayWindow::sDisplayWindows;
-HWND									VDVideoDisplayWindow::shwndLookout;
-HPALETTE								VDVideoDisplayWindow::shPalette;
-uint8									VDVideoDisplayWindow::sLogicalPalette[256];
 ATOM									VDVideoDisplayWindow::sChildWindowClass;
 bool VDVideoDisplayWindow::sbEnableDX = true;
 bool VDVideoDisplayWindow::sbEnableDXOverlay = true;
@@ -191,20 +691,6 @@ ATOM VDVideoDisplayWindow::Register() {
 	WNDCLASS wc;
 	HMODULE hInst = VDGetLocalModuleHandleW32();
 
-	wc.style			= 0;
-	wc.lpfnWndProc		= StaticLookoutWndProc;
-	wc.cbClsExtra		= 0;
-	wc.cbWndExtra		= 0;
-	wc.hInstance		= hInst;
-	wc.hIcon			= 0;
-	wc.hCursor			= 0;
-	wc.hbrBackground	= 0;
-	wc.lpszMenuName		= 0;
-	wc.lpszClassName	= "phaeronVideoDisplayLookout";
-
-	if (!RegisterClass(&wc))
-		return NULL;
-
 	if (!sChildWindowClass) {
 		wc.style			= CS_HREDRAW | CS_VREDRAW;
 		wc.lpfnWndProc		= StaticChildWndProc;
@@ -212,7 +698,7 @@ ATOM VDVideoDisplayWindow::Register() {
 		wc.cbWndExtra		= sizeof(VDVideoDisplayWindow *);
 		wc.hInstance		= hInst;
 		wc.hIcon			= 0;
-		wc.hCursor			= 0;
+		wc.hCursor			= LoadCursor(NULL, IDC_ARROW);
 		wc.hbrBackground	= 0;
 		wc.lpszMenuName		= 0;
 		wc.lpszClassName	= "phaeronVideoDisplayChild";
@@ -228,7 +714,7 @@ ATOM VDVideoDisplayWindow::Register() {
 	wc.cbWndExtra		= sizeof(VDVideoDisplayWindow *);
 	wc.hInstance		= hInst;
 	wc.hIcon			= 0;
-	wc.hCursor			= 0;
+	wc.hCursor			= LoadCursor(NULL, IDC_ARROW);
 	wc.hbrBackground	= 0;
 	wc.lpszMenuName		= 0;
 	wc.lpszClassName	= g_szVideoDisplayControlName;
@@ -236,8 +722,8 @@ ATOM VDVideoDisplayWindow::Register() {
 	return RegisterClass(&wc);
 }
 
-IVDVideoDisplay *VDGetIVideoDisplay(HWND hwnd) {
-	return static_cast<IVDVideoDisplay *>(reinterpret_cast<VDVideoDisplayWindow*>(GetWindowLongPtr(hwnd, 0)));
+IVDVideoDisplay *VDGetIVideoDisplay(VDGUIHandle hwnd) {
+	return static_cast<IVDVideoDisplay *>(reinterpret_cast<VDVideoDisplayWindow*>(GetWindowLongPtr((HWND)hwnd, 0)));
 }
 
 bool VDRegisterVideoDisplayControl() {
@@ -246,7 +732,7 @@ bool VDRegisterVideoDisplayControl() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-VDVideoDisplayWindow::VDVideoDisplayWindow(HWND hwnd)
+VDVideoDisplayWindow::VDVideoDisplayWindow(HWND hwnd, const CREATESTRUCT& createInfo)
 	: mhwnd(hwnd)
 	, mhwndChild(NULL)
 	, mhOldPalette(0)
@@ -257,35 +743,24 @@ VDVideoDisplayWindow::VDVideoDisplayWindow(HWND hwnd)
 	, mSyncDelta(0.0f)
 	, mFilterMode(kFilterAnySuitable)
 	, mbLockAcceleration(false)
+	, mbIgnoreMouse(false)
 	, mbUseSubrect(false)
+	, mpActiveFrame(NULL)
 {
 	mSource.pixmap.data = 0;
 
-	sDisplayWindows.push_back(this);
-	if (!shwndLookout)
-		shwndLookout = CreateWindow("phaeronVideoDisplayLookout", "", WS_POPUP, 0, 0, 0, 0, NULL, NULL, VDGetLocalModuleHandleW32(), 0);
+	if (createInfo.hwndParent) {
+		DWORD dwThreadId = GetWindowThreadProcessId(createInfo.hwndParent, NULL);
+		if (dwThreadId == GetCurrentThreadId())
+			mbIgnoreMouse = true;
+	}
+
+	VDVideoDisplayManager *vdm = (VDVideoDisplayManager *)createInfo.lpCreateParams;
+	vdm->AddClient(this);
 }
 
 VDVideoDisplayWindow::~VDVideoDisplayWindow() {
-	tDisplayWindows::iterator it(std::find(sDisplayWindows.begin(), sDisplayWindows.end(), this));
-
-	if (it != sDisplayWindows.end()) {
-		*it = sDisplayWindows.back();
-		sDisplayWindows.pop_back();
-
-		if (sDisplayWindows.empty()) {
-			if (shPalette) {
-				DeleteObject(shPalette);
-				shPalette = 0;
-			}
-
-			VDASSERT(shwndLookout);
-			DestroyWindow(shwndLookout);
-			shwndLookout = NULL;
-		}
-	} else {
-		VDASSERT(false);
-	}
+	mpManager->RemoveClient(this);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -295,6 +770,9 @@ VDVideoDisplayWindow::~VDVideoDisplayWindow() {
 #define MYWM_CACHE			(WM_USER + 0x102)
 #define MYWM_RESET			(WM_USER + 0x103)
 #define MYWM_SETSOURCEMSG	(WM_USER + 0x104)
+#define MYWM_PROCESSNEXTFRAME	(WM_USER+0x105)
+#define MYWM_DESTROY		(WM_USER + 0x106)
+#define MYWM_SETFILTERMODE	(WM_USER + 0x107)
 
 void VDVideoDisplayWindow::SetSourceMessage(const wchar_t *msg) {
 	SendMessage(mhwnd, MYWM_SETSOURCEMSG, 0, (LPARAM)msg);
@@ -322,6 +800,8 @@ bool VDVideoDisplayWindow::SetSource(bool bAutoUpdate, const VDPixmap& src, void
 	params.bpp = info.qsize >> info.qhbits;
 	params.bpr = (((src.w-1) >> info.qwbits)+1) * info.qsize;
 
+	params.mpCB				= this;
+
 	return 0 != SendMessage(mhwnd, MYWM_SETSOURCE, bAutoUpdate, (LPARAM)&params);
 }
 
@@ -342,6 +822,7 @@ bool VDVideoDisplayWindow::SetSourcePersistent(bool bAutoUpdate, const VDPixmap&
 	const VDPixmapFormatInfo& info = VDPixmapGetInfo(src.format);
 	params.bpp = info.qsize >> info.qhbits;
 	params.bpr = (((src.w-1) >> info.qwbits)+1) * info.qsize;
+	params.mpCB				= this;
 
 	return 0 != SendMessage(mhwnd, MYWM_SETSOURCE, bAutoUpdate, (LPARAM)&params);
 }
@@ -359,16 +840,95 @@ void VDVideoDisplayWindow::SetSourceSubrect(const vdrect32 *r) {
 	}
 }
 
+void VDVideoDisplayWindow::SetSourceSolidColor(uint32 color) {
+	mSolidColorBuffer = color;
+
+	VDPixmap srcbm;
+	srcbm.data = &mSolidColorBuffer;
+	srcbm.pitch = 0;
+	srcbm.format = nsVDPixmap::kPixFormat_XRGB8888;
+	srcbm.w = 1;
+	srcbm.h = 1;
+	SetSourcePersistent(true, srcbm, true, false);
+}
+
+void VDVideoDisplayWindow::PostBuffer(VDVideoDisplayFrame *p) {
+	p->AddRef();
+
+	bool wasIdle = false;
+	vdsynchronized(mMutex) {
+		if (!mpMiniDriver || !mpActiveFrame && mPendingFrames.empty())
+			wasIdle = true;
+
+		mPendingFrames.push_back(p);
+	}
+
+	if (wasIdle)
+		PostMessage(mhwnd, MYWM_PROCESSNEXTFRAME, 0, 0);
+}
+
+bool VDVideoDisplayWindow::RevokeBuffer(VDVideoDisplayFrame **ppFrame) {
+	VDVideoDisplayFrame *p = NULL;
+	vdsynchronized(mMutex) {
+		if (!mPendingFrames.empty() && mPendingFrames.front() != mPendingFrames.back()) {
+			p = mPendingFrames.back();
+			mPendingFrames.pop_back();
+		} else if (!mIdleFrames.empty()) {
+			p = mIdleFrames.front();
+			mIdleFrames.pop_front();
+		}
+	}
+
+	if (!p)
+		return false;
+
+	*ppFrame = p;
+	return true;
+}
+
+void VDVideoDisplayWindow::FlushBuffers() {
+	// wait for any current frame to clear
+	vdlist<VDVideoDisplayFrame> frames;
+	for(;;) {
+		bool idle;
+		vdsynchronized(mMutex) {
+			// clear existing pending frames so the display doesn't start another render
+			if (!mPendingFrames.empty())
+				frames.splice(frames.end(), mIdleFrames);
+
+			idle = !mpActiveFrame;
+		}
+
+		if (idle)
+			break;
+
+		::Sleep(1);
+		OnTick();
+	}
+
+	vdsynchronized(mMutex) {
+		frames.splice(frames.end(), mIdleFrames);
+		frames.splice(frames.end(), mPendingFrames);
+	}
+
+	while(!frames.empty()) {
+		VDVideoDisplayFrame *p = frames.back();
+		frames.pop_back();
+
+		p->Release();
+	}
+}
+
 void VDVideoDisplayWindow::Update(int fieldmode) {
 	SendMessage(mhwnd, MYWM_UPDATE, fieldmode, 0);
 }
 
-void VDVideoDisplayWindow::PostUpdate(int fieldmode) {
-	PostMessage(mhwnd, MYWM_UPDATE, fieldmode, 0);
-}
-
 void VDVideoDisplayWindow::Cache() {
 	SendMessage(mhwnd, MYWM_CACHE, 0, 0);
+}
+
+void VDVideoDisplayWindow::Destroy() {
+	SendMessage(mhwnd, MYWM_DESTROY, 0, 0);
 }
 
 void VDVideoDisplayWindow::Reset() {
@@ -388,13 +948,40 @@ IVDVideoDisplay::FilterMode VDVideoDisplayWindow::GetFilterMode() {
 }
 
 void VDVideoDisplayWindow::SetFilterMode(FilterMode mode) {
-	if (mFilterMode != mode) {
-		mFilterMode = mode;
+	SendMessage(mhwnd, MYWM_SETFILTERMODE, 0, (LPARAM)mode);
+}
 
-		if (mpMiniDriver) {
-			mpMiniDriver->SetFilterMode((IVDVideoDisplayMinidriver::FilterMode)mode);
-			InvalidateRect(mhwnd, NULL, FALSE);
+void VDVideoDisplayWindow::ReleaseActiveFrame() {
+	vdsynchronized(mMutex) {
+		if (mpActiveFrame) {
+			if (mpActiveFrame->mFlags & kAutoFlipFields) {
+				mpActiveFrame->mFlags ^= 3;
+				mpActiveFrame->mFlags &= ~(kAutoFlipFields | kFirstField);
+				mPendingFrames.push_front(mpActiveFrame);
+			} else
+				mIdleFrames.push_front(mpActiveFrame);
+
+			mpActiveFrame = NULL;
 		}
+	}
+}
+
+void VDVideoDisplayWindow::RequestNextFrame() {
+	PostMessage(mhwnd, MYWM_PROCESSNEXTFRAME, 0, 0);
+}
+
+void VDVideoDisplayWindow::DispatchNextFrame() {
+	vdsynchronized(mMutex) {
+		VDASSERT(!mpActiveFrame);
+		if (!mPendingFrames.empty()) {
+			mpActiveFrame = mPendingFrames.front();
+			mPendingFrames.pop_front();
+		}
+	}
+
+	if (mpActiveFrame) {
+		SetSource(false, mpActiveFrame->mPixmap, NULL, 0, mpActiveFrame->mbAllowConversion, mpActiveFrame->mbInterlaced);
+		SyncUpdate(mpActiveFrame->mFlags);
 	}
 }
 
@@ -423,7 +1010,11 @@ LRESULT VDVideoDisplayWindow::ChildWndProc(UINT msg, WPARAM wParam, LPARAM lPara
 		OnChildPaint();
 		return 0;
 	case WM_NCHITTEST:
-		return HTTRANSPARENT;
+		if (mbIgnoreMouse)
+			return HTTRANSPARENT;
+		break;
+	case WM_ERASEBKGND:
+		return FALSE;
 	}
 
 	return DefWindowProc(mhwndChild, msg, wParam, lParam);
@@ -447,7 +1038,7 @@ void VDVideoDisplayWindow::OnChildPaint() {
 			mpCB->DisplayRequestUpdate(this);
 		else if (mSource.pixmap.data && mSource.bPersistent) {
 			SyncReset();
-			SyncInit(true);
+			SyncInit(true, false);
 		}
 		++mInhibitRefresh;
 	}
@@ -477,7 +1068,7 @@ LRESULT CALLBACK VDVideoDisplayWindow::StaticWndProc(HWND hwnd, UINT msg, WPARAM
 
 	switch(msg) {
 	case WM_NCCREATE:
-		pThis = new VDVideoDisplayWindow(hwnd);
+		pThis = new VDVideoDisplayWindow(hwnd, *(const CREATESTRUCT *)lParam);
 		SetWindowLongPtr(hwnd, 0, (DWORD_PTR)pThis);
 		break;
 	case WM_NCDESTROY:
@@ -495,6 +1086,8 @@ LRESULT CALLBACK VDVideoDisplayWindow::StaticWndProc(HWND hwnd, UINT msg, WPARAM
 LRESULT VDVideoDisplayWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch(msg) {
 	case WM_DESTROY:
+		SyncReset();
+
 		if (mReinitDisplayTimer) {
 			KillTimer(mhwnd, mReinitDisplayTimer);
 			mReinitDisplayTimer = 0;
@@ -514,12 +1107,30 @@ LRESULT VDVideoDisplayWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 	case MYWM_UPDATE:
 		SyncUpdate((FieldMode)wParam);
 		return 0;
+	case MYWM_DESTROY:
+		SyncReset();
+		DestroyWindow(mhwnd);
+		return 0;
 	case MYWM_RESET:
 		SyncReset();
 		mSource.pixmap.data = NULL;
 		return 0;
 	case MYWM_SETSOURCEMSG:
 		SyncSetSourceMessage((const wchar_t *)lParam);
+		return 0;
+	case MYWM_PROCESSNEXTFRAME:
+		if (!mpMiniDriver || !mpMiniDriver->IsFramePending()) {
+			bool newframe;
+			vdsynchronized(mMutex) {
+				newframe = !mpActiveFrame;
+			}
+
+			if (newframe)
+				DispatchNextFrame();
+		}
+		return 0;
+	case MYWM_SETFILTERMODE:
+		SyncSetFilterMode((FilterMode)lParam);
 		return 0;
 	case WM_SIZE:
 		if (mhwndChild)
@@ -529,7 +1140,7 @@ LRESULT VDVideoDisplayWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		break;
 	case WM_TIMER:
 		if (wParam == mReinitDisplayTimer) {
-			SyncInit(true);
+			SyncInit(true, false);
 			return 0;
 		} else {
 			if (mpMiniDriver)
@@ -537,13 +1148,14 @@ LRESULT VDVideoDisplayWindow::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		}
 		break;
 	case WM_NCHITTEST:
-		{
+		if (mbIgnoreMouse) {
 			LRESULT lr = DefWindowProc(mhwnd, msg, wParam, lParam);
 
 			if (lr != HTCLIENT)
 				return lr;
+			return HTTRANSPARENT;
 		}
-		return HTTRANSPARENT;
+		break;
 	}
 
 	return DefWindowProc(mhwnd, msg, wParam, lParam);
@@ -561,8 +1173,8 @@ void VDVideoDisplayWindow::OnPaint() {
 
 		GetClientRect(mhwnd, &r);
 
+		FillRect(hdc, &r, (HBRUSH)(COLOR_3DFACE + 1));
 		if (!mMessage.empty()) {
-			FillRect(hdc, &r, (HBRUSH)(COLOR_3DFACE + 1));
 			HGDIOBJ hgo = SelectObject(hdc, GetStockObject(DEFAULT_GUI_FONT));
 			SetBkMode(hdc, TRANSPARENT);
 			VDDrawTextW32(hdc, mMessage.data(), mMessage.size(), &r, DT_CENTER | DT_VCENTER | DT_NOPREFIX | DT_WORDBREAK);
@@ -590,7 +1202,7 @@ bool VDVideoDisplayWindow::SyncSetSource(bool bAutoUpdate, const VDVideoDisplayS
 	}
 
 	SyncReset();
-	if (!SyncInit(bAutoUpdate))
+	if (!SyncInit(bAutoUpdate, true))
 		return false;
 
 	mSource.bAllowConversion = true;
@@ -601,7 +1213,9 @@ void VDVideoDisplayWindow::SyncReset() {
 	if (mpMiniDriver) {
 		ShutdownMiniDriver();
 		delete mpMiniDriver;
-		mpMiniDriver = 0;
+		mpMiniDriver = NULL;
+
+		SetPreciseMode(false);
 	}
 }
 
@@ -615,7 +1229,7 @@ void VDVideoDisplayWindow::SyncSetSourceMessage(const wchar_t *msg) {
 	InvalidateRect(mhwnd, NULL, TRUE);
 }
 
-bool VDVideoDisplayWindow::SyncInit(bool bAutoRefresh) {
+bool VDVideoDisplayWindow::SyncInit(bool bAutoRefresh, bool bAllowNonpersistentSource) {
 	if (!mSource.pixmap.data || !mSource.pixmap.format)
 		return true;
 
@@ -667,22 +1281,15 @@ bool VDVideoDisplayWindow::SyncInit(bool bAutoRefresh) {
 	} while(false);
 
 	if (mpMiniDriver) {
-		mpMiniDriver->SetLogicalPalette(sLogicalPalette);
+		mpMiniDriver->SetLogicalPalette(GetLogicalPalette());
 		mpMiniDriver->SetFilterMode((IVDVideoDisplayMinidriver::FilterMode)mFilterMode);
 		mpMiniDriver->SetSubrect(mbUseSubrect ? &mSourceSubrect : NULL);
 
 		if (mReinitDisplayTimer)
 			KillTimer(mhwnd, mReinitDisplayTimer);
 
-		if (StaticCheckPaletted()) {
-			if (!shPalette)
-				StaticCreatePalette();
-
-			SyncRealizePalette();
-		}
-
 		if (bAutoRefresh) {
-			if (mSource.bPersistent)
+			if (mSource.bPersistent || bAllowNonpersistentSource)
 				SyncUpdate(kAllFields);
 			else if (mpCB)
 				mpCB->DisplayRequestUpdate(this);
@@ -695,15 +1302,17 @@ bool VDVideoDisplayWindow::SyncInit(bool bAutoRefresh) {
 void VDVideoDisplayWindow::SyncUpdate(int mode) {
 	if (mSource.pixmap.data && !mpMiniDriver) {
 		mSyncDelta = 0.0f;
-		SyncInit(true);
+		SyncInit(true, true);
 		return;
 	}
 
 	if (mpMiniDriver) {
+		SetPreciseMode(0 != (mode & kVSync));
+
 		if (mode & kVisibleOnly) {
 			bool bVisible = true;
 
-			if (HDC hdc = GetDC(mhwnd)) {
+			if (HDC hdc = GetDCEx(mhwnd, NULL, 0)) {
 				RECT r;
 				GetClientRect(mhwnd, &r);
 				bVisible = 0 != RectVisible(hdc, &r);
@@ -717,10 +1326,16 @@ void VDVideoDisplayWindow::SyncUpdate(int mode) {
 		}
 
 		mSyncDelta = 0.0f;
-		if (mpMiniDriver->Update((IVDVideoDisplayMinidriver::UpdateMode)mode)) {
+
+		bool success = mpMiniDriver->Update((IVDVideoDisplayMinidriver::UpdateMode)mode);
+		ReleaseActiveFrame();
+		if (success) {
 			if (!mInhibitRefresh) {
 				mpMiniDriver->Refresh((IVDVideoDisplayMinidriver::UpdateMode)mode);
 				mSyncDelta = mpMiniDriver->GetSyncDelta();
+
+				if (!mpMiniDriver->IsFramePending())
+					RequestNextFrame();
 			}
 		}
 	}
@@ -735,47 +1350,61 @@ void VDVideoDisplayWindow::SyncCache() {
 	}
 
 	if (mSource.pixmap.data && !mpMiniDriver)
-		SyncInit(true);
+		SyncInit(true, true);
 }
 
-void VDVideoDisplayWindow::SyncDisplayChange() {
-	if (mhOldPalette && !shPalette) {
+void VDVideoDisplayWindow::SyncSetFilterMode(FilterMode mode) {
+	if (mFilterMode != mode) {
+		mFilterMode = mode;
+
+		if (mpMiniDriver) {
+			mpMiniDriver->SetFilterMode((IVDVideoDisplayMinidriver::FilterMode)mode);
+			InvalidateRect(mhwnd, NULL, FALSE);
+			InvalidateRect(mhwndChild, NULL, FALSE);
+		}
+	}
+}
+
+void VDVideoDisplayWindow::OnDisplayChange() {
+	HPALETTE hPal = GetPalette();
+	if (mhOldPalette && !hPal) {
 		if (HDC hdc = GetDC(mhwnd)) {
 			SelectPalette(hdc, mhOldPalette, FALSE);
 			mhOldPalette = 0;
 			ReleaseDC(mhwnd, hdc);
 		}
 	}
-	if (!mhOldPalette && shPalette) {
+	if (!mhOldPalette && hPal) {
 		if (HDC hdc = GetDC(mhwnd)) {
-			mhOldPalette = SelectPalette(hdc, shPalette, FALSE);
+			mhOldPalette = SelectPalette(hdc, hPal, FALSE);
 			ReleaseDC(mhwnd, hdc);
 		}
 	}
 	if (!mReinitDisplayTimer) {
 		SyncReset();
-		if (!SyncInit(true))
+		if (!SyncInit(true, false))
 			mReinitDisplayTimer = SetTimer(mhwnd, kReinitDisplayTimerId, 500, NULL);
 	}
 }
 
-void VDVideoDisplayWindow::SyncForegroundChange(bool bForeground) {
+void VDVideoDisplayWindow::OnForegroundChange(bool bForeground) {
 	if (!mbLockAcceleration)
 		SyncReset();
 
-	SyncRealizePalette();
+	OnRealizePalette();
 }
 
-void VDVideoDisplayWindow::SyncRealizePalette() {
+void VDVideoDisplayWindow::OnRealizePalette() {
 	if (HDC hdc = GetDC(mhwnd)) {
-		HPALETTE pal = SelectPalette(hdc, shPalette, FALSE);
+		HPALETTE newPal = GetPalette();
+		HPALETTE pal = SelectPalette(hdc, newPal, FALSE);
 		if (!mhOldPalette)
 			mhOldPalette = pal;
 		RealizePalette(hdc);
-		StaticRemapPalette();
+		RemapPalette();
 
 		if (mpMiniDriver) {
-			mpMiniDriver->SetLogicalPalette(sLogicalPalette);
+			mpMiniDriver->SetLogicalPalette(GetLogicalPalette());
 			if (mSource.bPersistent)
 				SyncUpdate(kAllFields);
 			else if (mpCB)
@@ -794,7 +1423,7 @@ bool VDVideoDisplayWindow::InitMiniDriver() {
 
 	RECT r;
 	GetClientRect(mhwnd, &r);
-	mhwndChild = CreateWindow((LPCTSTR)sChildWindowClass, "", WS_CHILD|WS_VISIBLE, 0, 0, r.right, r.bottom, mhwnd, NULL, VDGetLocalModuleHandleW32(), this);
+	mhwndChild = CreateWindowEx(WS_EX_NOPARENTNOTIFY, (LPCTSTR)sChildWindowClass, "", WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS, 0, 0, r.right, r.bottom, mhwnd, NULL, VDGetLocalModuleHandleW32(), this);
 	if (!mhwndChild)
 		return false;
 
@@ -827,141 +1456,42 @@ void VDVideoDisplayWindow::VerifyDriverResult(bool result) {
 	}
 }
 
-void VDVideoDisplayWindow::StaticRemapPalette() {
-	PALETTEENTRY pal[216];
-	struct {
-		LOGPALETTE hdr;
-		PALETTEENTRY palext[255];
-	} physpal;
+///////////////////////////////////////////////////////////////////////////////
 
-	physpal.hdr.palVersion = 0x0300;
-	physpal.hdr.palNumEntries = 256;
+vdautoptr<VDVideoDisplayManager> g_pVDVideoDisplayManager;
 
-	int i;
-
-	for(i=0; i<216; ++i) {
-		pal[i].peRed	= (BYTE)((i / 36) * 51);
-		pal[i].peGreen	= (BYTE)(((i%36) / 6) * 51);
-		pal[i].peBlue	= (BYTE)((i%6) * 51);
+VDVideoDisplayManager *VDGetVideoDisplayManager() {
+	if (!g_pVDVideoDisplayManager) {
+		g_pVDVideoDisplayManager = new VDVideoDisplayManager;
+		g_pVDVideoDisplayManager->Init();
 	}
 
-	for(i=0; i<256; ++i) {
-		physpal.hdr.palPalEntry[i].peRed	= 0;
-		physpal.hdr.palPalEntry[i].peGreen	= 0;
-		physpal.hdr.palPalEntry[i].peBlue	= (BYTE)i;
-		physpal.hdr.palPalEntry[i].peFlags	= PC_EXPLICIT;
-	}
+	return g_pVDVideoDisplayManager;
+}
 
-	if (HDC hdc = GetDC(0)) {
-		GetSystemPaletteEntries(hdc, 0, 256, physpal.hdr.palPalEntry);
-		ReleaseDC(0, hdc);
-	}
+VDGUIHandle VDCreateDisplayWindowW32(uint32 dwExFlags, uint32 dwFlags, int x, int y, int width, int height, VDGUIHandle hwndParent) {
+	VDVideoDisplayManager *vdm = VDGetVideoDisplayManager();
 
-	if (HPALETTE hpal = CreatePalette(&physpal.hdr)) {
-		for(i=0; i<216; ++i) {
-			sLogicalPalette[i] = (uint8)GetNearestPaletteIndex(hpal, RGB(pal[i].peRed, pal[i].peGreen, pal[i].peBlue));
-#if 0
-			VDDEBUG("[%3d %3d %3d] -> [%3d %3d %3d] : error(%+3d %+3d %+3d)\n"
-					, pal[i].peRed
-					, pal[i].peGreen
-					, pal[i].peBlue
-					, physpal.hdr.palPalEntry[sLogicalPalette[i]].peRed
-					, physpal.hdr.palPalEntry[sLogicalPalette[i]].peGreen
-					, physpal.hdr.palPalEntry[sLogicalPalette[i]].peBlue
-					, pal[i].peRed - physpal.hdr.palPalEntry[sLogicalPalette[i]].peRed
-					, pal[i].peGreen - physpal.hdr.palPalEntry[sLogicalPalette[i]].peGreen
-					, pal[i].peBlue - physpal.hdr.palPalEntry[sLogicalPalette[i]].peBlue);
-#endif
+	if (!vdm)
+		return NULL;
+
+	struct RemoteCreateCall {
+		DWORD dwExFlags;
+		DWORD dwFlags;
+		int x;
+		int y;
+		int width;
+		int height;
+		HWND hwndParent;
+		VDVideoDisplayManager *vdm;
+		HWND hwndResult;
+
+		static void Dispatch(void *p0) {
+			RemoteCreateCall *p = (RemoteCreateCall *)p0;
+			p->hwndResult = CreateWindowEx(p->dwExFlags, g_szVideoDisplayControlName, "", p->dwFlags, p->x, p->y, p->width, p->height, p->hwndParent, NULL, VDGetLocalModuleHandleW32(), p->vdm);
 		}
+	} rmc = {dwExFlags, dwFlags | WS_CLIPCHILDREN, x, y, width, height, (HWND)hwndParent, vdm};
 
-		DeleteObject(hpal);
-	}
-}
-
-bool VDVideoDisplayWindow::StaticCheckPaletted() {
-	bool bPaletted = false;
-
-	if (HDC hdc = GetDC(0)) {
-		if (GetDeviceCaps(hdc, BITSPIXEL) <= 8)		// RC_PALETTE doesn't seem to be set if you switch to 8-bit in Win98 without rebooting.
-			bPaletted = true;
-		ReleaseDC(0, hdc);
-	}
-
-	return bPaletted;
-}
-
-void VDVideoDisplayWindow::StaticCreatePalette() {
-	struct {
-		LOGPALETTE hdr;
-		PALETTEENTRY palext[255];
-	} pal;
-
-	pal.hdr.palVersion = 0x0300;
-	pal.hdr.palNumEntries = 216;
-
-	for(int i=0; i<216; ++i) {
-		pal.hdr.palPalEntry[i].peRed	= (BYTE)((i / 36) * 51);
-		pal.hdr.palPalEntry[i].peGreen	= (BYTE)(((i%36) / 6) * 51);
-		pal.hdr.palPalEntry[i].peBlue	= (BYTE)((i%6) * 51);
-		pal.hdr.palPalEntry[i].peFlags	= 0;
-	}
-
-	shPalette = CreatePalette(&pal.hdr);
-}
-
-LRESULT CALLBACK VDVideoDisplayWindow::StaticLookoutWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	switch(msg) {
-		case WM_DISPLAYCHANGE:
-			{
-				bool bPaletted = StaticCheckPaletted();
-
-				if (bPaletted && !shPalette) {
-					StaticCreatePalette();
-				}
-
-				for(tDisplayWindows::const_iterator it(sDisplayWindows.begin()), itEnd(sDisplayWindows.end()); it!=itEnd; ++it) {
-					VDVideoDisplayWindow *p = *it;
-
-					p->SyncDisplayChange();
-				}
-
-				if (!bPaletted && shPalette) {
-					DeleteObject(shPalette);
-					shPalette = 0;
-				}
-			}
-			break;
-
-		case WM_ACTIVATEAPP:
-			{
-				for(tDisplayWindows::const_iterator it(sDisplayWindows.begin()), itEnd(sDisplayWindows.end()); it!=itEnd; ++it) {
-					VDVideoDisplayWindow *p = *it;
-
-					p->SyncForegroundChange(wParam != 0);
-				}
-			}
-			break;
-
-		// Yes, believe it or not, we still support palettes, even when DirectDraw is active.
-		// Why?  Very occasionally, people still have to run in 8-bit mode, and a program
-		// should still display something half-decent in that case.  Besides, it's kind of
-		// neat to be able to dither in safe mode.
-		case WM_PALETTECHANGED:
-			{
-				DWORD dwProcess;
-
-				GetWindowThreadProcessId((HWND)wParam, &dwProcess);
-
-				if (dwProcess != GetCurrentProcessId()) {
-					for(tDisplayWindows::const_iterator it(sDisplayWindows.begin()), itEnd(sDisplayWindows.end()); it!=itEnd; ++it) {
-						VDVideoDisplayWindow *p = *it;
-
-						p->SyncRealizePalette();
-					}
-				}
-			}
-			break;
-	}
-
-	return DefWindowProc(hwnd, msg, wParam, lParam);
+	vdm->RemoteCall(RemoteCreateCall::Dispatch, &rmc);
+	return (VDGUIHandle)rmc.hwndResult;
 }

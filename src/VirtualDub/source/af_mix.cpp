@@ -127,7 +127,7 @@ extern const struct VDAudioFilterDefinition afilterDef_mix = {
 	&VDAudioFilterBase::sVtbl,
 };
 
-extern const struct VDPluginInfo apluginDef_mix = {
+extern const VDPluginInfo apluginDef_mix = {
 	sizeof(VDPluginInfo),
 	L"mix",
 	NULL,

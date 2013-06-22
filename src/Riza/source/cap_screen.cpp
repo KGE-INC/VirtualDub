@@ -207,6 +207,21 @@ protected:
 	int		mTimestampDelay;
 	int		mTimestampIndex;
 
+	GLuint	mGLCursorCacheTexture;
+	float	mGLCursorCacheTextureInvW;
+	float	mGLCursorCacheTextureInvH;
+	HCURSOR	mCachedCursor;
+	int		mCachedCursorWidth;
+	int		mCachedCursorHeight;
+	int		mCachedCursorHotspotX;
+	int		mCachedCursorHotspotY;
+	bool	mbCachedCursorXORMode;
+
+	HDC		mhdcCursorBuffer;
+	HBITMAP	mhbmCursorBuffer;
+	HGDIOBJ	mhbmCursorBufferOld;
+	uint32	*mpCursorBuffer;
+
 	VDAtomicInt	mbCaptureAsyncAbort;
 	VDAtomicInt	mbCaptureFramePending;
 	bool	mbCapturing;
@@ -219,13 +234,17 @@ protected:
 
 	bool	mbTrackCursor;
 	bool	mbTrackActiveWindow;
+	bool	mbTrackActiveWindowClient;
 	int		mTrackX;
 	int		mTrackY;
+	int		mTrackOffsetX;
+	int		mTrackOffsetY;
 
 	bool	mbRescaleImage;
 	int		mRescaleW;
 	int		mRescaleH;
 
+	bool	mbDrawMousePointer;
 	bool	mbRemoveDuplicates;
 
 	uint32	mFramePeriod;
@@ -277,6 +296,14 @@ VDCaptureDriverScreen::VDCaptureDriverScreen()
 	, mGLShaderBase(0)
 	, mGLTextureW(1)
 	, mGLTextureH(1)
+	, mGLCursorCacheTexture(0)
+	, mCachedCursor(NULL)
+	, mCachedCursorHotspotX(0)
+	, mCachedCursorHotspotY(0)
+	, mhdcCursorBuffer(NULL)
+	, mhbmCursorBuffer(NULL)
+	, mhbmCursorBufferOld(NULL)
+	, mpCursorBuffer(NULL)
 	, mbCaptureAsyncAbort(false)
 	, mbCaptureFramePending(false)
 	, mbCapturing(false)
@@ -285,11 +312,15 @@ VDCaptureDriverScreen::VDCaptureDriverScreen()
 	, mbAudioAnalysisActive(false)
 	, mbTrackCursor(false)
 	, mbTrackActiveWindow(false)
+	, mbTrackActiveWindowClient(false)
 	, mTrackX(0)
 	, mTrackY(0)
+	, mTrackOffsetX(0)
+	, mTrackOffsetY(0)
 	, mbRescaleImage(false)
 	, mRescaleW(GetSystemMetrics(SM_CXSCREEN))
 	, mRescaleH(GetSystemMetrics(SM_CYSCREEN))
+	, mbDrawMousePointer(true)
 	, mbRemoveDuplicates(true)
 	, mFramePeriod(10000000 / 30)
 	, mpCB(NULL)
@@ -1116,6 +1147,47 @@ bool VDCaptureDriverScreen::InitVideoBuffer() {
 		mGL.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, w, h, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, NULL);
 		VDASSERT(!mGL.glGetError());
 
+		int cxcursor = GetSystemMetrics(SM_CXCURSOR);
+		int cycursor = GetSystemMetrics(SM_CYCURSOR);
+
+		mCachedCursorWidth = cxcursor;
+		mCachedCursorHeight = cycursor;
+
+		HDC hdcScreen = GetDC(NULL);
+		mhdcCursorBuffer = CreateCompatibleDC(hdcScreen);
+		const BITMAPINFOHEADER bihCursor={
+			sizeof(BITMAPINFOHEADER),
+			cxcursor,
+			cycursor * 2,
+			1,
+			32,
+			BI_RGB,
+			0,
+			0,
+			0,
+			0,
+			0
+		};
+		ReleaseDC(NULL, hdcScreen);
+
+		mhbmCursorBuffer = CreateDIBSection(mhdcCursorBuffer, (const BITMAPINFO *)&bihCursor, DIB_RGB_COLORS, (void **)&mpCursorBuffer, NULL, 0);
+		mhbmCursorBufferOld = SelectObject(mhdcCursorBuffer, mhbmCursorBuffer);
+
+		cxcursor = cxcursor * 2 - 1;
+		while(int t = cxcursor & (cxcursor - 1))
+			cxcursor = t;
+
+		cycursor = cycursor * 2 - 1;
+		while(int t = cycursor & (cycursor - 1))
+			cycursor = t;
+
+		mGLCursorCacheTextureInvW = 1.0f / (float)cxcursor;
+		mGLCursorCacheTextureInvH = 1.0f / (float)cycursor;
+
+		mGL.glGenTextures(1, &mGLCursorCacheTexture);
+		mGL.glBindTexture(GL_TEXTURE_2D, mGLCursorCacheTexture);
+		mGL.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, cxcursor, cycursor, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, NULL);
+
 		if (mGL.NV_occlusion_query && mbRemoveDuplicates)
 			mGL.glGenOcclusionQueriesNV(2, mGLOcclusionQueries);
 
@@ -1146,6 +1218,22 @@ bool VDCaptureDriverScreen::InitVideoBuffer() {
 
 void VDCaptureDriverScreen::ShutdownVideoBuffer() {
 	mbCapBuffersInited = false;
+
+	if (mhbmCursorBufferOld) {
+		SelectObject(mhdcCursorBuffer, mhbmCursorBufferOld);
+		mhbmCursorBufferOld = NULL;
+	}
+
+	if (mhbmCursorBuffer) {
+		DeleteObject(mhbmCursorBuffer);
+		mhbmCursorBuffer = NULL;
+	}
+
+	if (mhdcCursorBuffer) {
+		DeleteDC(mhdcCursorBuffer);
+		mhdcCursorBuffer = NULL;
+	}
+
 	if (mGL.IsInited()) {
 		if (HDC hdc = GetDC(mhwndGL)) {
 			if (mGL.Begin(hdc)) {
@@ -1164,8 +1252,20 @@ void VDCaptureDriverScreen::ShutdownVideoBuffer() {
 		}
 
 		mGL.glDeleteLists(mGLShaderBase, sizeof g_techniques / sizeof g_techniques[0]);
-		mGL.glDeleteTextures(2, mGLTextures);
-		mGL.glDeleteBuffersARB(2, mGLBuffers);
+
+		if (mGLTextures[0]) {
+			mGL.glDeleteTextures(2, mGLTextures);
+			mGLTextures[0] = 0;
+		}
+
+		if (mGLCursorCacheTexture) {
+			mGL.glDeleteTextures(1, &mGLCursorCacheTexture);
+			mGLCursorCacheTexture = 0;
+			mCachedCursor = NULL;
+		}
+
+		if (mGL.EXT_pixel_buffer_object)
+			mGL.glDeleteBuffersARB(2, mGLBuffers);
 
 		mGL.Shutdown();
 	}
@@ -1239,6 +1339,9 @@ void VDCaptureDriverScreen::DoFrame() {
 			mTrackX = pt.x - ((w+1) >> 1);
 			mTrackY = pt.y - ((h+1) >> 1);
 		}
+	} else {
+		mTrackX = mTrackOffsetX;
+		mTrackY = mTrackOffsetY;
 	}
 
 	if (mbTrackActiveWindow) {
@@ -1246,8 +1349,24 @@ void VDCaptureDriverScreen::DoFrame() {
 
 		if (hwndFore) {
 			RECT r;
+			bool success = false;
 
-			if (GetClientRect(hwndFore, &r) && ClientToScreen(hwndFore, (LPPOINT)&r) && ClientToScreen(hwndFore, (LPPOINT)&r + 1)) {
+			if (mbTrackActiveWindowClient) {
+				if (GetClientRect(hwndFore, &r)) {
+					if (MapWindowPoints(hwndFore, NULL, (LPPOINT)&r, 2))
+						success = true;
+				}
+			} else {
+				if (GetWindowRect(hwndFore, &r))
+					success = true;
+			}
+
+			if (success) {
+				if (!mbTrackCursor) {
+					mTrackX = r.left + mTrackOffsetX;
+					mTrackY = r.left + mTrackOffsetY;
+				}
+
 				if (mTrackX > r.right - srcw)
 					mTrackX = r.right - srcw;
 				if (mTrackX < r.left)
@@ -1262,6 +1381,103 @@ void VDCaptureDriverScreen::DoFrame() {
 
 	globalTime = ComputeGlobalTime();
 	if (mbCapturing || mDisplayMode) {
+		// Check for cursor update.
+		CURSORINFO ci = {sizeof(CURSORINFO)};
+		bool cursorImageUpdated = false;
+
+		if (mbDrawMousePointer) {
+			if (!::GetCursorInfo(&ci)) {
+				ci.hCursor = NULL;
+			}
+
+			if (ci.hCursor) {
+				if (mCachedCursor != ci.hCursor) {
+					mCachedCursor = ci.hCursor;
+
+					ICONINFO ii;
+					if (::GetIconInfo(ci.hCursor, &ii)) {
+						mCachedCursorHotspotX = ii.xHotspot;
+						mCachedCursorHotspotY = ii.yHotspot;
+
+						if (mbOpenGLMode) {
+							bool mergeMask = false;
+
+							HDC hdc = GetDC(NULL);
+							if (hdc) {
+								mbCachedCursorXORMode = false;
+
+								if (!ii.hbmColor) {
+									mbCachedCursorXORMode = true;
+
+									// Query bitmap format.
+									BITMAPINFOHEADER maskFormat = {sizeof(BITMAPINFOHEADER)};
+									if (::GetDIBits(hdc, ii.hbmMask, 0, 0, NULL, (LPBITMAPINFO)&maskFormat, DIB_RGB_COLORS)) {
+										// Validate cursor size. This shouldn't change since SM_CXCURSOR and SM_CYCURSOR are constant.
+										if (maskFormat.biWidth == mCachedCursorWidth && maskFormat.biHeight == mCachedCursorHeight * 2) {
+											// Retrieve bitmap bits.
+											BITMAPINFOHEADER hdr = {};
+											hdr.biSize			= sizeof(BITMAPINFOHEADER);
+											hdr.biWidth			= maskFormat.biWidth;
+											hdr.biHeight		= maskFormat.biHeight;
+											hdr.biPlanes		= 1;
+											hdr.biBitCount		= 32;
+											hdr.biCompression	= BI_RGB;
+											hdr.biSizeImage		= maskFormat.biWidth * maskFormat.biHeight * 4;
+											hdr.biXPelsPerMeter	= 0;
+											hdr.biYPelsPerMeter	= 0;
+											hdr.biClrUsed		= 0;
+											hdr.biClrImportant	= 0;
+
+											::GetDIBits(hdc, ii.hbmMask, 0, maskFormat.biHeight, mpCursorBuffer, (LPBITMAPINFO)&hdr, DIB_RGB_COLORS);
+										}
+									}
+
+									uint32 numPixels = mCachedCursorWidth * mCachedCursorHeight;
+									uint32 *pXORMask = mpCursorBuffer;
+									uint32 *pANDMask = pXORMask + numPixels;
+
+									for(uint32 i=0; i<numPixels; ++i)
+										pXORMask[i] = (pXORMask[i] & 0xFFFFFF) + (~pANDMask[i] << 24);
+								} else {
+									RECT r1 = {0, 0, mCachedCursorWidth, mCachedCursorHeight};
+									RECT r2 = {0, mCachedCursorHeight, mCachedCursorWidth, mCachedCursorHeight*2};
+									FillRect(mhdcCursorBuffer, &r1, (HBRUSH)GetStockObject(BLACK_BRUSH));
+									FillRect(mhdcCursorBuffer, &r2, (HBRUSH)GetStockObject(WHITE_BRUSH));
+									DrawIcon(mhdcCursorBuffer, 0, 0, ci.hCursor);
+									DrawIcon(mhdcCursorBuffer, 0, mCachedCursorHeight, ci.hCursor);
+									GdiFlush();
+
+									uint32 numPixels = mCachedCursorWidth * mCachedCursorHeight;
+									uint32 *pWhiteMask = mpCursorBuffer;
+									uint32 *pBlackMask = pWhiteMask + numPixels;
+
+									for(uint32 i=0; i<numPixels; ++i) {
+										uint32 pixelOnWhite = pWhiteMask[i];
+										uint32 pixelOnBlack = pBlackMask[i];
+										int alpha = 255 - (int)(pWhiteMask[i] & 255) + (int)(pBlackMask[i] & 255);
+										if ((unsigned)alpha >= 256)
+											alpha = ~alpha >> 31;
+										pWhiteMask[i] = (pBlackMask[i] & 0xffffff) + (alpha << 24);
+									}
+								}
+
+								cursorImageUpdated = true;
+								ReleaseDC(NULL, hdc);
+							}
+						}
+
+						if (ii.hbmColor)
+							VDVERIFY(::DeleteObject(ii.hbmColor));
+						if (ii.hbmMask)
+							VDVERIFY(::DeleteObject(ii.hbmMask));
+					}
+				}
+
+				ci.ptScreenPos.x -= mCachedCursorHotspotX;
+				ci.ptScreenPos.y -= mCachedCursorHotspotY;
+			}
+		}
+
 		if (mbOpenGLMode) {
 			RECT r = {0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
 
@@ -1273,6 +1489,12 @@ void VDCaptureDriverScreen::DoFrame() {
 					VDASSERT(!mGL.glGetError());
 					mGL.glDrawBuffer(GL_BACK);
 					mGL.glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+					// update cursor if necessary
+					if (cursorImageUpdated) {
+						mGL.glBindTexture(GL_TEXTURE_2D, mGLCursorCacheTexture);
+						mGL.glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, mCachedCursorWidth, mCachedCursorHeight, GL_BGRA_EXT, GL_UNSIGNED_BYTE, mpCursorBuffer);
+					}
 
 					// read screen into texture
 					mGL.glActiveTextureARB(GL_TEXTURE0_ARB);
@@ -1322,9 +1544,86 @@ void VDCaptureDriverScreen::DoFrame() {
 					mGL.glReadBuffer(GL_FRONT);
 
 					mProfileChannel.Begin(0xd0e0f0, "GL:ReadScreen");
+					if (!mbRescaleImage || mbDrawMousePointer) {
+						mGL.glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, srcx, srcy, srcw, srch);
+						mGL.glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+
+						float u = (float)srcw / (float)mGLTextureW;
+						float v = (float)srch / (float)mGLTextureH;
+
+						mGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+						mGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+						mGL.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+						mGL.glBegin(GL_QUADS);
+							mGL.glTexCoord2f(0.0f, 0.0f);
+							mGL.glVertex2f(0, 0);
+							mGL.glTexCoord2f(u, 0.0f);
+							mGL.glVertex2f((float)srcw, 0);
+							mGL.glTexCoord2f(u, v);
+							mGL.glVertex2f((float)srcw, (float)srch);
+							mGL.glTexCoord2f(0.0f, v);
+							mGL.glVertex2f(0, (float)srch);
+						mGL.glEnd();
+						mGL.glReadBuffer(GL_BACK);
+
+						if (ci.hCursor) {
+							mGL.glBindTexture(GL_TEXTURE_2D, mGLCursorCacheTexture);
+							mGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+							mGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+							mGL.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+							int curx = ci.ptScreenPos.x - srcx;
+							int cury = (r.bottom - (ci.ptScreenPos.y + mCachedCursorHeight)) - srcy;
+							float curu = (float)mCachedCursorWidth * mGLCursorCacheTextureInvW;
+							float curv = (float)mCachedCursorHeight * mGLCursorCacheTextureInvH;
+							mGL.glEnable(GL_BLEND);
+
+							if (mbCachedCursorXORMode && mGL.EXT_texture_env_combine) {
+								mGL.glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE_EXT);
+								mGL.glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB_EXT, GL_MODULATE);
+								mGL.glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB_EXT, GL_TEXTURE);
+								mGL.glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB_EXT, GL_ONE_MINUS_SRC_ALPHA);
+								mGL.glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE1_RGB_EXT, GL_TEXTURE);
+								mGL.glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB_EXT, GL_SRC_COLOR);
+								mGL.glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA_EXT, GL_REPLACE);
+								mGL.glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_ALPHA_EXT, GL_TEXTURE);
+								mGL.glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_ALPHA_EXT, GL_SRC_ALPHA);
+								mGL.glTexEnvi(GL_TEXTURE_ENV, GL_RGB_SCALE_EXT, 1);
+								mGL.glTexEnvi(GL_TEXTURE_ENV, GL_ALPHA_SCALE, 1);
+								mGL.glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR);
+								mGL.glBegin(GL_QUADS);
+									mGL.glTexCoord2f(0.0f, 0.0f);
+									mGL.glVertex2i(curx, cury);
+									mGL.glTexCoord2f(curu, 0.0f);
+									mGL.glVertex2i(curx + mCachedCursorWidth, cury);
+									mGL.glTexCoord2f(curu, curv);
+									mGL.glVertex2i(curx + mCachedCursorWidth, cury + mCachedCursorHeight);
+									mGL.glTexCoord2f(0.0f, curv);
+									mGL.glVertex2i(curx, cury + mCachedCursorHeight);
+								mGL.glEnd();
+								mGL.glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+								mGL.glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+							} else
+								mGL.glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+
+							mGL.glBegin(GL_QUADS);
+								mGL.glTexCoord2f(0.0f, 0.0f);
+								mGL.glVertex2i(curx, cury);
+								mGL.glTexCoord2f(curu, 0.0f);
+								mGL.glVertex2i(curx + mCachedCursorWidth, cury);
+								mGL.glTexCoord2f(curu, curv);
+								mGL.glVertex2i(curx + mCachedCursorWidth, cury + mCachedCursorHeight);
+								mGL.glTexCoord2f(0.0f, curv);
+								mGL.glVertex2i(curx, cury + mCachedCursorHeight);
+							mGL.glEnd();
+							mGL.glDisable(GL_BLEND);
+							mGL.glBindTexture(GL_TEXTURE_2D, mGLTextures[0]);
+						}
+					}
+
 					if (mbRescaleImage) {
-						while(srcw != w && srch != h) {
-							int dstw = std::max<int>(w, srcw >> 1);
+						do {
+							int dstw = std::max<int>(w, (srcw+1) >> 1);
 							int dsth = std::max<int>(h, (srch+1) >> 1);
 
 							mGL.glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, srcx, srcy, srcw, srch);
@@ -1353,28 +1652,7 @@ void VDCaptureDriverScreen::DoFrame() {
 							mGL.glReadBuffer(GL_BACK);
 							srcw = dstw;
 							srch = dsth;
-						}
-					} else {
-						mGL.glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, srcx, srcy, w, h);
-						mGL.glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-
-						float u = (float)(w) / (float)mGLTextureW;
-						float v = (float)(h) / (float)mGLTextureH;
-
-						mGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-						mGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-						mGL.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-						mGL.glBegin(GL_QUADS);
-							mGL.glTexCoord2f(0.0f, 0.0f);
-							mGL.glVertex2f(0, 0);
-							mGL.glTexCoord2f(u, 0.0f);
-							mGL.glVertex2f((float)w, 0);
-							mGL.glTexCoord2f(u, v);
-							mGL.glVertex2f((float)w, (float)h);
-							mGL.glTexCoord2f(0.0f, v);
-							mGL.glVertex2f(0, (float)h);
-						mGL.glEnd();
-						mGL.glReadBuffer(GL_BACK);
+						} while(srcw != w || srch != h);
 					}
 					mProfileChannel.End();
 
@@ -1384,10 +1662,11 @@ void VDCaptureDriverScreen::DoFrame() {
 					float u = (float)w / (float)mGLTextureW;
 					float v = (float)h / (float)mGLTextureH;
 
-					if (mVideoFormat->biCompression || mbRemoveDuplicates) {
+					bool removeDuplicates = mGL.NV_occlusion_query && mbRemoveDuplicates;
+					if (mVideoFormat->biCompression || removeDuplicates || mDisplayMode == kDisplaySoftware || mDisplayMode == kDisplayHardware) {
 						mGL.glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
 
-						if (mbRemoveDuplicates) {
+						if (removeDuplicates) {
 							if (!mbGLOcclusionPrevFrameValid) {
 								mbGLOcclusionPrevFrameValid = true;
 								mbFrameValid[0] = true;
@@ -1534,6 +1813,8 @@ void VDCaptureDriverScreen::DoFrame() {
 			if (HDC hdc = GetDC(NULL)) {
 				static DWORD sBitBltMode = AutodetectCaptureBltMode();
 				BitBlt(mhdcOffscreen, 0, 0, w, h, hdc, mTrackX, mTrackY, sBitBltMode);
+				if (ci.hCursor)
+					DrawIcon(mhdcOffscreen, ci.ptScreenPos.x - mTrackX, ci.ptScreenPos.y - mTrackY, ci.hCursor);
 				ReleaseDC(NULL, hdc);
 			}
 			mProfileChannel.End();
@@ -1552,91 +1833,93 @@ void VDCaptureDriverScreen::DoFrame() {
 		}
 	}
 	
-	if (mbOpenGLMode) {
-		if (mDisplayMode == kDisplayHardware || mDisplayMode == kDisplaySoftware) {
-			RECT rdraw;
-			GetClientRect(mhwndGLDraw, &rdraw);
+	if (mbVisible) {
+		if (mbOpenGLMode) {
+			if (mDisplayMode == kDisplayHardware || mDisplayMode == kDisplaySoftware) {
+				RECT rdraw;
+				GetClientRect(mhwndGLDraw, &rdraw);
 
-			if (rdraw.right && rdraw.bottom) {
-				mProfileChannel.Begin(0xe0e0e0, "Overlay (OpenGL)");
-				if (HDC hdcDraw = GetDC(mhwndGLDraw)) {
-					if (mGL.Begin(hdcDraw)) {
-						VDASSERT(!mGL.glGetError());
-						mGL.glDisable(GL_LIGHTING);
-						mGL.glDisable(GL_CULL_FACE);
-						mGL.glDisable(GL_BLEND);
-						mGL.glDisable(GL_ALPHA_TEST);
-						mGL.glDisable(GL_DEPTH_TEST);
-						mGL.glDisable(GL_STENCIL_TEST);
-						mGL.glDisable(GL_SCISSOR_TEST);
-						mGL.glEnable(GL_TEXTURE_2D);
+				if (rdraw.right && rdraw.bottom) {
+					mProfileChannel.Begin(0xe0e0e0, "Overlay (OpenGL)");
+					if (HDC hdcDraw = GetDC(mhwndGLDraw)) {
+						if (mGL.Begin(hdcDraw)) {
+							VDASSERT(!mGL.glGetError());
+							mGL.glDisable(GL_LIGHTING);
+							mGL.glDisable(GL_CULL_FACE);
+							mGL.glDisable(GL_BLEND);
+							mGL.glDisable(GL_ALPHA_TEST);
+							mGL.glDisable(GL_DEPTH_TEST);
+							mGL.glDisable(GL_STENCIL_TEST);
+							mGL.glDisable(GL_SCISSOR_TEST);
+							mGL.glEnable(GL_TEXTURE_2D);
 
-						VDASSERT(!mGL.glGetError());
-						mGL.DisableFragmentShaders();
+							VDASSERT(!mGL.glGetError());
+							mGL.DisableFragmentShaders();
 
-						float dstw = (float)rdraw.right;
-						float dsth = (float)rdraw.bottom;
+							float dstw = (float)rdraw.right;
+							float dsth = (float)rdraw.bottom;
 
-						VDASSERT(!mGL.glGetError());
-						mGL.glViewport(0, 0, rdraw.right, rdraw.bottom);
-						mGL.glMatrixMode(GL_MODELVIEW);
-						mGL.glLoadIdentity();
-						mGL.glMatrixMode(GL_PROJECTION);
-						mGL.glLoadIdentity();
-						mGL.glOrtho(0, dstw, 0, dsth, -1.0f, 1.0f);
+							VDASSERT(!mGL.glGetError());
+							mGL.glViewport(0, 0, rdraw.right, rdraw.bottom);
+							mGL.glMatrixMode(GL_MODELVIEW);
+							mGL.glLoadIdentity();
+							mGL.glMatrixMode(GL_PROJECTION);
+							mGL.glLoadIdentity();
+							mGL.glOrtho(0, dstw, 0, dsth, -1.0f, 1.0f);
 
-						mGL.glDrawBuffer(GL_BACK);
-						mGL.glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-						mGL.glClearColor(0.5f, 0.0f, 0.0f, 0.0f);
-						mGL.glClear(GL_COLOR_BUFFER_BIT);
-						VDASSERT(!mGL.glGetError());
+							mGL.glDrawBuffer(GL_BACK);
+							mGL.glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+							mGL.glClearColor(0.5f, 0.0f, 0.0f, 0.0f);
+							mGL.glClear(GL_COLOR_BUFFER_BIT);
+							VDASSERT(!mGL.glGetError());
 
-						mGL.glBindTexture(GL_TEXTURE_2D, mGLTextures[0]);
-						VDASSERT(!mGL.glGetError());
+							mGL.glBindTexture(GL_TEXTURE_2D, mGLTextures[0]);
+							VDASSERT(!mGL.glGetError());
 
-						mGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-						mGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-						mGL.glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-						mGL.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+							mGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+							mGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+							mGL.glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+							mGL.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 
-						float u = (float)srcw / (float)mGLTextureW;
-						float v = (float)srch / (float)mGLTextureH;
+							float u = (float)srcw / (float)mGLTextureW;
+							float v = (float)srch / (float)mGLTextureH;
 
-						VDASSERT(!mGL.glGetError());
-						mGL.glBegin(GL_QUADS);
-							mGL.glTexCoord2f(0.0f, 0.0f);
-							mGL.glVertex2f(0, 0);
-							mGL.glTexCoord2f(u, 0.0f);
-							mGL.glVertex2f(dstw, 0);
-							mGL.glTexCoord2f(u, v);
-							mGL.glVertex2f(dstw, dsth);
-							mGL.glTexCoord2f(0.0f, v);
-							mGL.glVertex2f(0, dsth);
-						mGL.glEnd();
-						VDASSERT(!mGL.glGetError());
+							VDASSERT(!mGL.glGetError());
+							mGL.glBegin(GL_QUADS);
+								mGL.glTexCoord2f(0.0f, 0.0f);
+								mGL.glVertex2f(0, 0);
+								mGL.glTexCoord2f(u, 0.0f);
+								mGL.glVertex2f(dstw, 0);
+								mGL.glTexCoord2f(u, v);
+								mGL.glVertex2f(dstw, dsth);
+								mGL.glTexCoord2f(0.0f, v);
+								mGL.glVertex2f(0, dsth);
+							mGL.glEnd();
+							VDASSERT(!mGL.glGetError());
 
-						if (mGL.EXT_swap_control)
-							mGL.wglSwapIntervalEXT(0);
+							if (mGL.EXT_swap_control)
+								mGL.wglSwapIntervalEXT(0);
 
-						mGL.wglSwapBuffers(hdcDraw);
-						mGL.End();
+							mGL.wglSwapBuffers(hdcDraw);
+							mGL.End();
+						}
+						ReleaseDC(mhwndGLDraw, hdcDraw);
 					}
-					ReleaseDC(mhwndGLDraw, hdcDraw);
+					mProfileChannel.End();
+				}
+			}
+		} else {
+			if (mDisplayMode == kDisplayHardware) {
+				mProfileChannel.Begin(0xe0e0e0, "Overlay (GDI)");
+				if (HDC hdcScreen = GetDC(NULL)) {
+					if (HDC hdc = GetDC(mhwnd)) {
+						BitBlt(hdc, 0, 0, w, h, hdcScreen, mTrackX, mTrackY, SRCCOPY);
+						ReleaseDC(mhwnd, hdc);
+					}
+					ReleaseDC(NULL, hdcScreen);
 				}
 				mProfileChannel.End();
 			}
-		}
-	} else {
-		if (mDisplayMode == kDisplayHardware) {
-			mProfileChannel.Begin(0xe0e0e0, "Overlay (GDI)");
-			if (HDC hdcScreen = GetDC(NULL)) {
-				if (HDC hdc = GetDC(mhwnd)) {
-					BitBlt(hdc, 0, 0, w, h, hdcScreen, mTrackX, mTrackY, SRCCOPY);
-					ReleaseDC(mhwnd, hdc);
-				}
-				ReleaseDC(NULL, hdcScreen);
-			}
-			mProfileChannel.End();
 		}
 	}
 
@@ -2229,11 +2512,15 @@ void VDCaptureDriverScreen::LoadSettings() {
 
 	mbTrackCursor = key.getBool("Track cursor", mbTrackCursor);
 	mbTrackActiveWindow = key.getBool("Track active window", mbTrackActiveWindow);
+	mbTrackActiveWindowClient = key.getBool("Track active window client area", mbTrackActiveWindowClient);
+	mbDrawMousePointer = key.getBool("Draw mouse pointer", mbDrawMousePointer);
 	mbRescaleImage = key.getBool("Rescale image", mbRescaleImage);
 	mbOpenGLMode = key.getBool("OpenGL mode", mbOpenGLMode);
 	mbRemoveDuplicates = key.getBool("Remove duplicates", mbRemoveDuplicates);
 	mRescaleW = key.getInt("Rescale width", mRescaleW);
-	mRescaleH = key.getInt("Rescale width", mRescaleH);
+	mRescaleH = key.getInt("Rescale height", mRescaleH);
+	mTrackOffsetX = key.getInt("Position X", mTrackOffsetX);
+	mTrackOffsetY = key.getInt("Position Y", mTrackOffsetY);
 }
 
 void VDCaptureDriverScreen::SaveSettings() {
@@ -2241,11 +2528,15 @@ void VDCaptureDriverScreen::SaveSettings() {
 
 	key.setBool("Track cursor", mbTrackCursor);
 	key.setBool("Track active window", mbTrackActiveWindow);
+	key.setBool("Track active window client", mbTrackActiveWindowClient);
+	key.setBool("Draw mouse pointer", mbDrawMousePointer);
 	key.setBool("Rescale image", mbRescaleImage);
 	key.setBool("OpenGL mode", mbOpenGLMode);
 	key.setBool("Remove duplicates", mbRemoveDuplicates);
 	key.setInt("Rescale width", mRescaleW);
-	key.setInt("Rescale width", mRescaleH);
+	key.setInt("Rescale height", mRescaleH);
+	key.setInt("Position X", mTrackOffsetX);
+	key.setInt("Position Y", mTrackOffsetY);
 }
 
 void VDCaptureDriverScreen::TimerCallback() {
@@ -2344,13 +2635,21 @@ INT_PTR CALLBACK VDCaptureDriverScreen::VideoSourceDlgProc(HWND hdlg, UINT msg, 
 	case WM_INITDIALOG:
 		SetWindowLongPtr(hdlg, DWLP_USER, (LONG_PTR)lParam);
 		pThis = (VDCaptureDriverScreen *)lParam;
-		CheckDlgButton(hdlg, IDC_TRACK_CURSOR, pThis->mbTrackCursor);
-		CheckDlgButton(hdlg, IDC_TRACK_ACTIVE, pThis->mbTrackActiveWindow);
+		CheckDlgButton(hdlg, IDC_POSITION_TRACKMOUSE, pThis->mbTrackCursor);
+		CheckDlgButton(hdlg, IDC_POSITION_FIXED, !pThis->mbTrackCursor);
+
+		CheckDlgButton(hdlg, IDC_PANNING_DESKTOP, !pThis->mbTrackActiveWindow);
+		CheckDlgButton(hdlg, IDC_PANNING_ACTIVEWINDOW, pThis->mbTrackActiveWindow && !pThis->mbTrackActiveWindowClient);
+		CheckDlgButton(hdlg, IDC_PANNING_ACTIVECLIENT, pThis->mbTrackActiveWindow && pThis->mbTrackActiveWindowClient);
+
+		CheckDlgButton(hdlg, IDC_DRAW_CURSOR, pThis->mbDrawMousePointer);
 		CheckDlgButton(hdlg, IDC_RESCALE_IMAGE, pThis->mbRescaleImage);
 		CheckDlgButton(hdlg, IDC_USE_OPENGL, pThis->mbOpenGLMode);
 		CheckDlgButton(hdlg, IDC_REMOVE_DUPES, pThis->mbRemoveDuplicates);
 		SetDlgItemInt(hdlg, IDC_WIDTH, pThis->mRescaleW, FALSE);
 		SetDlgItemInt(hdlg, IDC_HEIGHT, pThis->mRescaleH, FALSE);
+		SetDlgItemInt(hdlg, IDC_POSITION_X, pThis->mTrackOffsetX, TRUE);
+		SetDlgItemInt(hdlg, IDC_POSITION_Y, pThis->mTrackOffsetY, TRUE);
 reenable:
 		{
 			bool enableOpenGL = !!IsDlgButtonChecked(hdlg, IDC_USE_OPENGL);
@@ -2382,10 +2681,44 @@ reenable:
 					SetFocus(GetDlgItem(hdlg, IDC_HEIGHT));
 					return TRUE;
 				}
+
+				if (!IsDlgButtonChecked(hdlg, IDC_POSITION_TRACKMOUSE)) {
+					int x = GetDlgItemInt(hdlg, IDC_POSITION_X, &success, TRUE);
+					if (!success) {
+						MessageBeep(MB_ICONEXCLAMATION);
+						SetFocus(GetDlgItem(hdlg, IDC_POSITION_X));
+						return TRUE;
+					}
+
+					int y = GetDlgItemInt(hdlg, IDC_POSITION_Y, &success, TRUE);
+					if (!success) {
+						MessageBeep(MB_ICONEXCLAMATION);
+						SetFocus(GetDlgItem(hdlg, IDC_POSITION_X));
+						return TRUE;
+					}
+
+					pThis->mTrackOffsetX = x;
+					pThis->mTrackOffsetY = y;
+					pThis->mbTrackCursor = false;
+				} else {
+					pThis->mbTrackCursor = true;
+				}
+
 				pThis->mRescaleW = w;
 				pThis->mRescaleH = h;
-				pThis->mbTrackCursor = !!IsDlgButtonChecked(hdlg, IDC_TRACK_CURSOR);
-				pThis->mbTrackActiveWindow = !!IsDlgButtonChecked(hdlg, IDC_TRACK_ACTIVE);
+
+				if (IsDlgButtonChecked(hdlg, IDC_PANNING_DESKTOP)) {
+					pThis->mbTrackActiveWindow = false;
+					pThis->mbTrackActiveWindowClient = false;
+				} else if (IsDlgButtonChecked(hdlg, IDC_PANNING_ACTIVEWINDOW)) {
+					pThis->mbTrackActiveWindow = true;
+					pThis->mbTrackActiveWindowClient = false;
+				} else if (IsDlgButtonChecked(hdlg, IDC_PANNING_ACTIVECLIENT)) {
+					pThis->mbTrackActiveWindow = true;
+					pThis->mbTrackActiveWindowClient = true;
+				}
+
+				pThis->mbDrawMousePointer = !!IsDlgButtonChecked(hdlg, IDC_DRAW_CURSOR);
 				pThis->mbRescaleImage = !!IsDlgButtonChecked(hdlg, IDC_RESCALE_IMAGE);
 				pThis->mbOpenGLMode = !!IsDlgButtonChecked(hdlg, IDC_USE_OPENGL);
 				pThis->mbRemoveDuplicates = !!IsDlgButtonChecked(hdlg, IDC_REMOVE_DUPES);

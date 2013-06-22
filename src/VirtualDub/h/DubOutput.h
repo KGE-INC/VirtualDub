@@ -212,8 +212,11 @@ public:
 	bool AcceptsAudio();
 	bool IsRealTime() { return false; }
 
+	void SetLoopCount(int loopCount) { mLoopCount = loopCount; }
+
 private:
 	VDStringW	mFilename;
+	int			mLoopCount;
 
 	AVIStreamHeader_fixed	mVideoStreamInfo;
 	std::vector<char>		mVideoFormat;

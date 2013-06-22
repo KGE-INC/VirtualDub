@@ -25,6 +25,7 @@
 #include <vd2/Kasumi/pixmaputils.h>
 #include <vd2/Riza/bitmap.h>
 #include "AVIOutput.h"
+#include "AVIOutputGIF.h"
 
 extern uint32 VDPreferencesGetFileAsyncDefaultMode();
 extern uint32& VDPreferencesGetRenderOutputBufferSize();
@@ -36,7 +37,7 @@ public:
 	AVIVideoGIFOutputStream(IVDFileAsync *pAsync);
 	~AVIVideoGIFOutputStream();
 
-	void init();
+	void init(int loopCount);
 	void finalize();
 	void write(uint32 flags, const void *pBuffer, uint32 cbBuffer, uint32 lSamples);
 	void partialWriteBegin(uint32 flags, uint32 bytes, uint32 samples);
@@ -50,6 +51,7 @@ private:
 	vdblock<uint8>	mPackBuffer;
 	uint32			mExtraLeader;
 	uint32			mFrameCount;
+	int				mLoopCount;
 
 	VDPixmapLayout	mSrcLayout;
 	VDPixmapLayout	mDstLayout;
@@ -67,7 +69,9 @@ AVIVideoGIFOutputStream::AVIVideoGIFOutputStream(IVDFileAsync *pAsync)
 AVIVideoGIFOutputStream::~AVIVideoGIFOutputStream() {
 }
 
-void AVIVideoGIFOutputStream::init() {
+void AVIVideoGIFOutputStream::init(int loopCount) {
+	mLoopCount = loopCount;
+
 	const BITMAPINFOHEADER *bih = (const BITMAPINFOHEADER *)getFormat();
 	int variant;
 
@@ -124,27 +128,29 @@ void AVIVideoGIFOutputStream::init() {
 #endif
 
 	// write loop extension
-	struct LoopExtension {
-		uint8	mExtensionCode;
-		uint8	mAppExtensionLabel;
-		uint8	mAppBlockLength;
-		uint8	mSignature[11];
-		uint8	mSubBlockLength;
-		uint8	mExtensionType;
-		uint8	mIterations[2];
-		uint8	mSubBlockTerminator;
-	} loopext;
-	VDASSERTCT(sizeof(loopext) == 19);
+	if (mLoopCount != 1) {
+		struct LoopExtension {
+			uint8	mExtensionCode;
+			uint8	mAppExtensionLabel;
+			uint8	mAppBlockLength;
+			uint8	mSignature[11];
+			uint8	mSubBlockLength;
+			uint8	mExtensionType;
+			uint8	mIterations[2];
+			uint8	mSubBlockTerminator;
+		} loopext;
+		VDASSERTCT(sizeof(loopext) == 19);
 
-	loopext.mExtensionCode = 0x21;
-	loopext.mAppExtensionLabel = 0xFF;
-	loopext.mAppBlockLength = 11;
-	memcpy(loopext.mSignature, "NETSCAPE2.0", 11);
-	loopext.mSubBlockLength = 3;
-	loopext.mExtensionType = 1;
-	VDWriteUnalignedLEU16(loopext.mIterations, 2);
-	loopext.mSubBlockTerminator = 0;
-	mpAsync->FastWrite(&loopext, sizeof loopext);
+		loopext.mExtensionCode = 0x21;
+		loopext.mAppExtensionLabel = 0xFF;
+		loopext.mAppBlockLength = 11;
+		memcpy(loopext.mSignature, "NETSCAPE2.0", 11);
+		loopext.mSubBlockLength = 3;
+		loopext.mExtensionType = 1;
+		VDWriteUnalignedLEU16(loopext.mIterations, (uint16)(mLoopCount ? mLoopCount - 1 : 0));
+		loopext.mSubBlockTerminator = 0;
+		mpAsync->FastWrite(&loopext, sizeof loopext);
+	}
 }
 
 void AVIVideoGIFOutputStream::finalize() {
@@ -816,9 +822,14 @@ void AVIVideoGIFOutputStream::partialWriteEnd() {
 
 //////////////////////////////////
 
-class AVIOutputGIF : public AVIOutput {
+class AVIOutputGIF : public AVIOutput, public IVDAVIOutputGIF {
 public:
 	AVIOutputGIF();
+
+	AVIOutput *AsAVIOutput() { return this; }
+	void SetLoopCount(int count) {
+		mLoopCount = count;
+	}
 
 	IVDMediaOutputStream *createVideoStream();
 	IVDMediaOutputStream *createAudioStream();
@@ -828,12 +839,14 @@ public:
 
 protected:
 	vdautoptr<IVDFileAsync> mpAsync;
+	int mLoopCount;
 };
 
-AVIOutput *VDCreateAVIOutputGIF() { return new AVIOutputGIF; }
+IVDAVIOutputGIF *VDCreateAVIOutputGIF() { return new AVIOutputGIF; }
 
 AVIOutputGIF::AVIOutputGIF()
 	: mpAsync(VDCreateFileAsync((IVDFileAsync::Mode)VDPreferencesGetFileAsyncDefaultMode()))
+	, mLoopCount(0)
 {
 }
 
@@ -859,7 +872,7 @@ bool AVIOutputGIF::init(const wchar_t *szFile) {
 	if (!videoOut)
 		return false;
 
-	static_cast<AVIVideoGIFOutputStream *>(videoOut)->init();
+	static_cast<AVIVideoGIFOutputStream *>(videoOut)->init(mLoopCount);
 
 	return true;
 }

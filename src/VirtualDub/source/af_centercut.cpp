@@ -267,7 +267,7 @@ extern const struct VDAudioFilterDefinition afilterDef_centercut = {
 	&VDAudioFilterBase::sVtbl,
 };
 
-extern const struct VDPluginInfo apluginDef_centercut = {
+extern const VDPluginInfo apluginDef_centercut = {
 	sizeof(VDPluginInfo),
 	L"center cut",
 	NULL,

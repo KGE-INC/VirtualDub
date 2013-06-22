@@ -22,6 +22,7 @@
 #include <vd2/system/error.h>
 #include <vd2/system/thread.h>
 #include <vd2/system/vdstl.h>
+#include "DubUtils.h"
 
 class VDAtomicInt;
 class IVDStreamSource;
@@ -78,15 +79,19 @@ public:
 		return mpCurrentAction;
 	}
 
+	void SetThrottle(float f);
+
 protected:
 	void ThreadRun();
-	void ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDPosition display_frame, VDPosition timeline_frame, bool preload, bool direct, bool sameAsLast);
+	void ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDPosition target_frame, VDPosition display_frame, VDPosition timeline_frame, bool preload, bool direct, bool sameAsLast);
 	void ReadNullVideoFrame(int sourceIndex, VDPosition displayFrame, VDPosition timelineFrame, bool direct, bool sameAsLast);
 	bool MainAddVideoFrame();
 	bool MainAddAudioFrame();
 
 	MyError				mError;
 	bool				mbError;
+
+	VDLoopThrottle		mLoopThrottle;
 
 	// config vars (ick)
 

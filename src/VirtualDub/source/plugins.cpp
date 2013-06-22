@@ -4,11 +4,13 @@
 #include <vd2/system/debug.h>
 #include <vd2/system/error.h>
 #include <vd2/system/filesys.h>
+#include <vd2/system/refcount.h>
 #include <vd2/system/vdalloc.h>
 
 #include <vd2/plugin/vdplugin.h>
 #include <vd2/plugin/vdaudiofilt.h>
 #include <vd2/plugin/vdvideofilt.h>
+#include <vd2/plugin/vdinputdriver.h>
 
 #include "plugins.h"
 #include "misc.h"
@@ -16,22 +18,105 @@
 extern FilterFunctions g_filterFuncs;
 
 namespace {
-	struct VDShadowedPluginDescription : public VDPluginDescription {
+	class VDShadowedPluginDescription : public VDPluginDescription, public vdrefcounted<IVDRefCount> {
 	public:
+		virtual ~VDShadowedPluginDescription() {}
+
+		virtual void Init(const VDPluginInfo *pInfo, VDExternalModule *pModule) {
+			mName			= pInfo->mpName;
+			mAuthor			= pInfo->mpAuthor ? pInfo->mpAuthor : L"(internal)";
+			mDescription	= pInfo->mpDescription;
+			mVersion		= pInfo->mVersion;
+			mType			= pInfo->mType;
+			mpModule		= pModule;
+
+			mShadowedInfo	= *pInfo;
+			mShadowedInfo.mpName		= mName.c_str();
+			mShadowedInfo.mpAuthor		= mAuthor.c_str();
+			mShadowedInfo.mpDescription	= mDescription.c_str();
+		}
+
 		VDPluginInfo			mShadowedInfo;
-		std::vector<char>		mpShadowedTypeInfo;
+	};
+
+	class VDShadowedVideoFilterDescription : public VDShadowedPluginDescription {
+	public:
+		virtual void Init(const VDPluginInfo *pInfo, VDExternalModule *pModule) {
+			VDShadowedPluginDescription::Init(pInfo, pModule);
+
+			const VDVideoFilterDefinition *def = static_cast<const VDVideoFilterDefinition *>(pInfo->mpTypeSpecificInfo);
+			memset(&mDefinition, 0, sizeof mDefinition);
+			memcpy(&mDefinition, def, std::min<uint32>(def->mSize, sizeof mDefinition));
+			mDefinition.mpConfigInfo = NULL;
+			mShadowedInfo.mpTypeSpecificInfo = &mDefinition;
+		}
+
+		VDVideoFilterDefinition	mDefinition;
+	};
+
+	class VDShadowedAudioFilterDescription : public VDShadowedPluginDescription {
+	public:
+		virtual void Init(const VDPluginInfo *pInfo, VDExternalModule *pModule) {
+			VDShadowedPluginDescription::Init(pInfo, pModule);
+
+			const VDAudioFilterDefinition *def = static_cast<const VDAudioFilterDefinition *>(pInfo->mpTypeSpecificInfo);
+			memset(&mDefinition, 0, sizeof mDefinition);
+			memcpy(&mDefinition, def, std::min<uint32>(def->mSize, sizeof mDefinition));
+			mDefinition.mpConfigInfo = NULL;
+			mShadowedInfo.mpTypeSpecificInfo = &mDefinition;
+		}
+
+	protected:
+		VDAudioFilterDefinition	mDefinition;
+	};
+
+	class VDShadowedInputDriverDescription : public VDShadowedPluginDescription {
+	public:
+		virtual void Init(const VDPluginInfo *pInfo, VDExternalModule *pModule) {
+			VDShadowedPluginDescription::Init(pInfo, pModule);
+
+			const VDInputDriverDefinition *def = static_cast<const VDInputDriverDefinition *>(pInfo->mpTypeSpecificInfo);
+			memset(&mDefinition, 0, sizeof mDefinition);
+			memcpy(&mDefinition, def, std::min<uint32>(def->mSize, sizeof mDefinition));
+			mShadowedInfo.mpTypeSpecificInfo = &mDefinition;
+
+			if (def->mpSignature && def->mSignatureLength)
+				mSignature.assign((const uint8 *)def->mpSignature, (const uint8 *)def->mpSignature + def->mSignatureLength);
+			mDefinition.mpSignature = mSignature.data();
+
+			if (def->mpFilenameDetectPattern) {
+				mFilenameDetectPattern = def->mpFilenameDetectPattern;
+				mDefinition.mpFilenameDetectPattern = mFilenameDetectPattern.c_str();
+			}
+
+			if (def->mpFilenamePattern) {
+				mFilenamePattern = def->mpFilenamePattern;
+				mDefinition.mpFilenamePattern = mFilenamePattern.c_str();
+			}
+
+			mDriverTagName = def->mpDriverTagName;
+			mDefinition.mpDriverTagName = mDriverTagName.c_str();
+		}
+
+	protected:
+		VDInputDriverDefinition	mDefinition;
+
+		vdfastvector<uint8>		mSignature;
+		VDStringW				mFilenameDetectPattern;
+		VDStringW				mFilenamePattern;
+		VDStringW				mDriverTagName;
 	};
 }
 
 
 
-std::list<VDShadowedPluginDescription> g_plugins;
+vdfastvector<VDShadowedPluginDescription *> g_plugins;
 
 VDPluginDescription *VDGetPluginDescription(const wchar_t *pName, uint32 type) {
-	for(std::list<VDShadowedPluginDescription>::iterator it(g_plugins.begin()), itEnd(g_plugins.end());
+	for(vdfastvector<VDShadowedPluginDescription *>::iterator it(g_plugins.begin()), itEnd(g_plugins.end());
 			it != itEnd; ++it)
 	{
-		VDPluginDescription& desc = *it;
+		VDPluginDescription& desc = **it;
 
 		if (desc.mName == pName && desc.mType == type)
 			return &desc;
@@ -44,43 +129,24 @@ void VDConnectPluginDescription(const VDPluginInfo *pInfo, VDExternalModule *pMo
 	VDShadowedPluginDescription *pDesc = static_cast<VDShadowedPluginDescription *>(VDGetPluginDescription(pInfo->mpName, pInfo->mType));
 
 	if (!pDesc) {
-		g_plugins.push_back(VDShadowedPluginDescription());
-		pDesc = &g_plugins.back();
+		switch(pInfo->mType) {
+			case kVDPluginType_Video:
+				pDesc = new VDShadowedVideoFilterDescription;
+				break;
 
-		pDesc->mName		= pInfo->mpName;
-		pDesc->mAuthor		= pInfo->mpAuthor ? pInfo->mpAuthor : L"(internal)";
-		pDesc->mDescription	= pInfo->mpDescription;
-		pDesc->mVersion		= pInfo->mVersion;
-		pDesc->mType		= pInfo->mType;
-		pDesc->mpModule		= pModule;
-	}
+			case kVDPluginType_Audio:
+				pDesc = new VDShadowedAudioFilterDescription;
+				break;
 
-	pDesc->mShadowedInfo = *pInfo;
-
-	size_t typelen = *(uint32 *)pInfo->mpTypeSpecificInfo;
-	pDesc->mpShadowedTypeInfo.resize(typelen);
-	memcpy(&pDesc->mpShadowedTypeInfo[0], pInfo->mpTypeSpecificInfo, typelen);
-
-	pDesc->mShadowedInfo.mpTypeSpecificInfo = &pDesc->mpShadowedTypeInfo[0];
-
-	// sanitize type info
-	switch(pInfo->mType) {
-	case kVDPluginType_Video:
-		{
-			VDVideoFilterDefinition& desc = *(VDVideoFilterDefinition *)pDesc->mShadowedInfo.mpTypeSpecificInfo;
-
-			desc.mpConfigInfo = NULL;
+			case kVDPluginType_Input:
+				pDesc = new VDShadowedInputDriverDescription;
+				break;
 		}
-		break;
-	case kVDPluginType_Audio:
-		{
-			VDAudioFilterDefinition& desc = *(VDAudioFilterDefinition *)pDesc->mShadowedInfo.mpTypeSpecificInfo;
 
-			desc.mpConfigInfo	= NULL;
-		}
-		break;
-	default:
-		VDASSERT(false);
+		pDesc->AddRef();
+		g_plugins.push_back(pDesc);
+
+		pDesc->Init(pInfo, pModule);
 	}
 
 	pDesc->mpInfo = pInfo;
@@ -92,10 +158,10 @@ void VDConnectPluginDescriptions(const VDPluginInfo *const *ppInfos, VDExternalM
 }
 
 void VDDisconnectPluginDescriptions(VDExternalModule *pModule) {
-	for(std::list<VDShadowedPluginDescription>::iterator it(g_plugins.begin()), itEnd(g_plugins.end());
+	for(vdfastvector<VDShadowedPluginDescription *>::iterator it(g_plugins.begin()), itEnd(g_plugins.end());
 			it != itEnd; ++it)
 	{
-		VDShadowedPluginDescription& desc = *it;
+		VDShadowedPluginDescription& desc = **it;
 
 		if (desc.mpModule == pModule)
 			desc.mpInfo = &desc.mShadowedInfo;
@@ -103,10 +169,10 @@ void VDDisconnectPluginDescriptions(VDExternalModule *pModule) {
 }
 
 void VDEnumeratePluginDescriptions(std::vector<VDPluginDescription *>& plugins, uint32 type) {
-	for(std::list<VDShadowedPluginDescription>::iterator it(g_plugins.begin()), itEnd(g_plugins.end());
+	for(vdfastvector<VDShadowedPluginDescription *>::iterator it(g_plugins.begin()), itEnd(g_plugins.end());
 			it != itEnd; ++it)
 	{
-		VDPluginDescription& desc = *it;
+		VDPluginDescription& desc = **it;
 
 		if (desc.mType == type)
 			plugins.push_back(&desc);
@@ -165,7 +231,6 @@ void VDExternalModule::DisconnectOldPlugins() {
 		{
 			VDExternalCodeBracket bracket(mFilename.c_str(), __FILE__, __LINE__);
 			mModuleInfo.deinitProc(&mModuleInfo, &g_filterFuncs);
-			FreeLibrary(mModuleInfo.hInstModule);
 		}
 
 		mModuleInfo.hInstModule = NULL;
@@ -190,10 +255,10 @@ void VDExternalModule::ReconnectOldPlugins() {
 						"This filter was created for VirtualDub 1.1 or earlier, and is not compatible with version 1.2 or later. "
 						"Please contact the author for an updated version.");
 
-				fp = GetProcAddress(mModuleInfo.hInstModule, "NinaFilterModuleInit");
-
-				if (fp)
-					throw MyError("This filter will only work with VirtualDub 2.0 or above.");
+				if (GetProcAddress(mModuleInfo.hInstModule, "VDGetPluginInfo")) {
+					mModuleInfo.hInstModule = NULL;
+					return;
+				}
 			}
 
 			if (!mModuleInfo.initProc || !mModuleInfo.deinitProc)
@@ -222,7 +287,6 @@ void VDExternalModule::ReconnectOldPlugins() {
 					);
 			}
 		} catch(...) {
-			FreeLibrary(mModuleInfo.hInstModule);
 			mModuleInfo.hInstModule = NULL;
 			throw;
 		}
@@ -230,10 +294,10 @@ void VDExternalModule::ReconnectOldPlugins() {
 }
 
 void VDExternalModule::ReconnectPlugins() {
-	tpVDGetPluginInfo pVDGetPluginInfo = (tpVDGetPluginInfo)GetProcAddress(mhModule, "VDGetPluginInfo");
+	tpVDXGetPluginInfo pVDGetPluginInfo = (tpVDXGetPluginInfo)GetProcAddress(mhModule, "VDGetPluginInfo");
 
 	if (pVDGetPluginInfo) {
-		const VDPluginInfo **ppPluginInfo = pVDGetPluginInfo();
+		const VDXPluginInfo *const *ppPluginInfo = pVDGetPluginInfo();
 
 		VDConnectPluginDescriptions(ppPluginInfo, this);
 	}
@@ -242,7 +306,12 @@ void VDExternalModule::ReconnectPlugins() {
 ///////////////////////////////////////////////////////////////////////////
 
 void VDDeinitPluginSystem() {
-	g_plugins.clear();
+	while(!g_plugins.empty()) {
+		VDShadowedPluginDescription *pDesc = g_plugins.back();
+		g_plugins.pop_back();
+
+		pDesc->Release();
+	}
 
 	while(!g_pluginModules.empty()) {
 		VDExternalModule *pModule = g_pluginModules.back();
@@ -315,19 +384,26 @@ void VDUnlockPlugin(VDPluginDescription *pDesc) {
 }
 
 void VDLoadPlugins(const VDStringW& path, int& succeeded, int& failed) {
-	VDDirectoryIterator it(VDMakePath(path.c_str(), L"*.vdf").c_str());
+	static const wchar_t *const kExtensions[]={
+		L"*.vdf",
+		L"*.vdplugin"
+	};
 
 	succeeded = failed = 0;
 
-	while(it.Next()) {
-		VDDEBUG("Plugins: Attempting to load \"%ls\"\n", it.GetFullPath().c_str());
-		VDStringW path(it.GetFullPath());
-		try {
-			VDAddPluginModule(path.c_str());
-			++succeeded;
-		} catch(const MyError& e) {
-			VDDEBUG("Plugins: Failed to load \"%ls\": %s\n", it.GetFullPath().c_str(), e.gets());
-			++failed;
+	for(int i=0; i<sizeof(kExtensions)/sizeof(kExtensions[0]); ++i) {
+		VDDirectoryIterator it(VDMakePath(path.c_str(), kExtensions[i]).c_str());
+
+		while(it.Next()) {
+			VDDEBUG("Plugins: Attempting to load \"%ls\"\n", it.GetFullPath().c_str());
+			VDStringW path(it.GetFullPath());
+			try {
+				VDAddPluginModule(path.c_str());
+				++succeeded;
+			} catch(const MyError& e) {
+				VDDEBUG("Plugins: Failed to load \"%ls\": %s\n", it.GetFullPath().c_str(), e.gets());
+				++failed;
+			}
 		}
 	}
 }

@@ -2535,6 +2535,7 @@ bool AVIReadHandler::_parseIndexBlock(List2<AVIStreamNode>& streamlist, int coun
 	AVIINDEXENTRY avie[32];
 	AVIStreamNode *pasn, *pasn_next;
 	bool absolute_addr = true;
+	bool first_chunk = true;
 
 	// Some AVI files have relative addresses in their AVI index chunks, and some
 	// absolute.  They're supposed to be relative to the 'movi' chunk; all versions
@@ -2561,11 +2562,36 @@ bool AVIReadHandler::_parseIndexBlock(List2<AVIStreamNode>& streamlist, int coun
 			return false;
 		}
 
+		if (first_chunk) {
+			first_chunk = false;
+
+			// If the chunk offset is prior to the 'movi' chunk, then we know that we have to
+			// use relative addressing.
+			uint32 chunk_offset = avie[0].dwChunkOffset;
+			if (chunk_offset < movi_offset)
+				absolute_addr = false;
+			else {
+				// Okay, both relative and absolute are potentially good. We try the lower one
+				// (absolute) and see if the chunk at that location matches in FOURCC (we do
+				// NOT check the length as some interleavers play tricks with that). If not,
+				// then we use relative positioning, which is what should be used anyway.
+
+				sint64 savepos = _posFile();
+
+				_seekFile(chunk_offset);
+
+				uint32 fcc;
+				_readFile2(&fcc, sizeof fcc);
+
+				if (fcc != avie[0].ckid)
+					absolute_addr = false;
+
+				_seekFile(savepos);
+			}
+		}
+
 		for(i=0; i<tc; i++) {
 			int stream = StreamFromFOURCC(avie[i].ckid);
-
-			if (absolute_addr && avie[i].dwChunkOffset<movi_offset)
-				absolute_addr = false;
 
 			if (is_palette_change(avie[i].ckid)) {
 				mbPaletteChangesDetected = true;

@@ -19,6 +19,8 @@
 
 #include <windows.h>
 #include "InputFile.h"
+#include "plugins.h"
+#include <vd2/plugin/vdplugin.h>
 #include <vd2/system/error.h>
 #include <vd2/system/VDString.h>
 #include <vd2/system/file.h>
@@ -66,14 +68,11 @@ InputFileOptions *InputFile::promptForOptions(HWND) {
 	return NULL;
 }
 
-InputFileOptions *InputFile::createOptions(const char *buf) {
+InputFileOptions *InputFile::createOptions(const void *buf, uint32 len) {
 	return NULL;
 }
 
 void InputFile::InfoDialog(HWND hwndParent) {
-}
-
-void InputFile::setAutomated(bool) {
 }
 
 void InputFile::GetTextInfo(tFileTextInfo& info) {
@@ -90,8 +89,8 @@ bool InputFile::isStreaming() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-tVDInputDrivers g_VDInputDrivers;
-tVDInputDrivers g_VDInputDriversByLegacyIndex;
+static tVDInputDrivers g_VDInputDrivers;
+static tVDInputDrivers g_VDInputDriversByLegacyIndex;
 
 extern IVDInputDriver *VDCreateInputDriverAVI1();
 extern IVDInputDriver *VDCreateInputDriverAVI2();
@@ -101,6 +100,7 @@ extern IVDInputDriver *VDCreateInputDriverASF();
 extern IVDInputDriver *VDCreateInputDriverANIM();
 extern IVDInputDriver *VDCreateInputDriverFLM();
 extern IVDInputDriver *VDCreateInputDriverGIF();
+extern IVDInputDriver *VDCreateInputDriverPlugin(VDPluginDescription *);
 
 namespace {
 	struct SortByRevPriority {
@@ -111,21 +111,37 @@ namespace {
 }
 
 void VDInitInputDrivers() {
-
-	g_VDInputDriversByLegacyIndex.reserve(7);
+	// Note that we re-call this if a plugin has been loaded from the command line.
+	g_VDInputDriversByLegacyIndex.clear();
+	g_VDInputDriversByLegacyIndex.reserve(9);
 
 	g_VDInputDriversByLegacyIndex.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverAVI1()));
 	g_VDInputDriversByLegacyIndex.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverAVI2()));
 	g_VDInputDriversByLegacyIndex.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverMPEG()));
 	g_VDInputDriversByLegacyIndex.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverImages()));
 	g_VDInputDriversByLegacyIndex.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverASF()));
-	g_VDInputDriversByLegacyIndex.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverANIM()));
-	g_VDInputDriversByLegacyIndex.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverFLM()));
-	g_VDInputDriversByLegacyIndex.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverGIF()));
 
 	g_VDInputDrivers = g_VDInputDriversByLegacyIndex;
 
+	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverANIM()));
+	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverFLM()));
+	g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverGIF()));
+
+	std::vector<VDPluginDescription *> plugins;
+	VDEnumeratePluginDescriptions(plugins, kVDPluginType_Input);
+
+	while(!plugins.empty()) {
+		VDPluginDescription *desc = plugins.back();
+		g_VDInputDrivers.push_back(vdrefptr<IVDInputDriver>(VDCreateInputDriverPlugin(desc)));
+		plugins.pop_back();
+	}
+
 	std::sort(g_VDInputDrivers.begin(), g_VDInputDrivers.end(), SortByRevPriority());
+}
+
+void VDShutdownInputDrivers() {
+	g_VDInputDrivers.clear();
+	g_VDInputDriversByLegacyIndex.clear();
 }
 
 void VDGetInputDrivers(tVDInputDrivers& l, uint32 flags) {

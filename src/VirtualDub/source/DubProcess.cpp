@@ -258,6 +258,10 @@ VDSignal *VDDubProcessThread::GetBlitterSignal() {
 	return mpBlitter ? mpBlitter->getFlushCompleteSignal() : NULL;
 }
 
+void VDDubProcessThread::SetThrottle(float f) {
+	mLoopThrottle.SetThrottleFactor(f);
+}
+
 void VDDubProcessThread::NextSegment() {
 	if (mpAVIOut) {
 		IVDMediaOutput *temp = mpAVIOut;
@@ -282,7 +286,7 @@ void VDDubProcessThread::ThreadRun() {
 	lDropFrames = 0;
 	mpVInfo->processed = 0;
 
-	std::vector<char>	audioBuffer;
+	vdfastvector<char>	audioBuffer;
 	const bool fPreview = mpOutputSystem->IsRealTime();
 
 	int lastVideoSourceIndex = 0;
@@ -300,6 +304,13 @@ void VDDubProcessThread::ThreadRun() {
 		for(;;) {
 			int stream;
 			sint32 count;
+
+			if (!mLoopThrottle.Delay()) {
+				++mActivityCounter;
+				if (*mpAbort)
+					break;
+				continue;
+			}
 
 			VDStreamInterleaver::Action nextAction;
 			
@@ -345,7 +356,9 @@ void VDDubProcessThread::ThreadRun() {
 							{
 								VDDubAutoThreadLocation loc(mpCurrentAction, "waiting for video frame from I/O thread");
 
+								mLoopThrottle.BeginWait();
 								pFrameInfo = mpVideoPipe->getReadBuffer();
+								mLoopThrottle.EndWait();
 							}
 
 							// Check if we have frames buffered in the codec due to B-frame encoding. If we do,
@@ -409,6 +422,7 @@ void VDDubProcessThread::ThreadRun() {
 								pFrameInfo->mDroptype,
 								pFrameInfo->mLength,
 								pFrameInfo->mRawFrame,
+								pFrameInfo->mTargetFrame,
 								pFrameInfo->mDisplayFrame,
 								pFrameInfo->mTimelineFrame,
 								pFrameInfo->mSrcIndex);
@@ -495,7 +509,9 @@ void VDDubProcessThread::ThreadRun() {
 							}
 
 							VDDubAutoThreadLocation loc(mpCurrentAction, "waiting for audio data from I/O thread");
+							mLoopThrottle.BeginWait();
 							mpAudioPipe->ReadWait();
+							mLoopThrottle.EndWait();
 						}
 
 						bytesread += tc;
@@ -562,7 +578,9 @@ void VDDubProcessThread::ThreadRun() {
 						try {
 							mpVideoDecompressor->Start();
 
+							mLoopThrottle.BeginWait();
 							mpBlitter->lock(BUFFERID_OUTPUT);
+							mLoopThrottle.EndWait();
 							mpBlitter->postAPC(BUFFERID_OUTPUT, AsyncDecompressorSuccessfulCallback, mpOutputDisplay, NULL);					
 
 							int format = mpVideoDecompressor->GetTargetFormat();
@@ -578,12 +596,16 @@ void VDDubProcessThread::ThreadRun() {
 					}
 
 					if (!mpVideoDecompressor) {
+						mLoopThrottle.BeginWait();
 						mpBlitter->lock(BUFFERID_OUTPUT);
+						mLoopThrottle.EndWait();
 						mpBlitter->postAPC(BUFFERID_OUTPUT, AsyncDecompressorFailedCallback, mpOutputDisplay, NULL);
 					}
 				} else {
 					if (mpVideoDecompressor) {
+						mLoopThrottle.BeginWait();
 						mpBlitter->lock(BUFFERID_OUTPUT);
+						mLoopThrottle.EndWait();
 						mpBlitter->unlock(BUFFERID_OUTPUT);
 						mpVideoDecompressor->Stop();
 						mpVideoDecompressor = NULL;
@@ -639,7 +661,7 @@ abort_requested:
 	*mpAbort = true;
 }
 
-VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, VDPosition sample_num, VDPosition display_num, VDPosition timeline_num, int srcIndex) {
+VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, VDPosition sample_num, VDPosition target_num, VDPosition display_num, VDPosition timeline_num, int srcIndex) {
 	uint32 dwBytes;
 	bool isKey;
 	const void *frameBuffer;
@@ -705,8 +727,10 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 		}
 
 		// Zero-byte drop frame? Just nuke it now.
-		if (!lastSize && (!(exdata & kBufferFlagInternalDecode) || (exdata & kBufferFlagSameAsLast)))
-			bDrop = true;
+		if (opt->video.mbPreserveEmptyFrames || (opt->video.mode == DubVideoOptions::M_FULL && filters.isEmpty())) {
+			if (!lastSize && (!(exdata & kBufferFlagInternalDecode) || (exdata & kBufferFlagSameAsLast)))
+				bDrop = true;
+		}
 
 		if (bDrop) {
 			if (!(exdata&kBufferFlagPreload)) {
@@ -804,9 +828,11 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 	bool bLockSuccessful;
 
 	const bool fPreview = mpOutputSystem->IsRealTime();
+	mLoopThrottle.BeginWait();
 	do {
 		bLockSuccessful = mpBlitter->lock(BUFFERID_INPUT, fPreview ? 500 : -1);
 	} while(!bLockSuccessful && !*mpAbort);
+	mLoopThrottle.EndWait();
 	mProcessingProfileChannel.End();
 
 	if (!bLockSuccessful)
@@ -821,7 +847,7 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 	CHECK_FPU_STACK
 	{
 		VDDubAutoThreadLocation loc(mpCurrentAction, "decompressing video frame");
-		vsrc->streamGetFrame(buffer, lastSize, false, sample_num);
+		vsrc->streamGetFrame(buffer, lastSize, false, sample_num, target_num);
 	}
 	CHECK_FPU_STACK
 
@@ -857,7 +883,9 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 
 		if (!mpInvTelecine && filters.isEmpty()) {
 			mProcessingProfileChannel.Begin(0xe0e0e0, "V-Lock2");
+			mLoopThrottle.BeginWait();
 			mpBlitter->lock(BUFFERID_OUTPUT);
+			mLoopThrottle.EndWait();
 			mProcessingProfileChannel.End();
 			VDPixmapBlt(mVideoFilterOutputPixmap, vsrc->getTargetFormat());
 		} else {
@@ -898,7 +926,9 @@ VDDubProcessThread::VideoWriteResult VDDubProcessThread::WriteVideoFrame(void *b
 			}
 
 			mProcessingProfileChannel.Begin(0xe0e0e0, "V-Lock2");
+			mLoopThrottle.BeginWait();
 			mpBlitter->lock(BUFFERID_OUTPUT);
+			mLoopThrottle.EndWait();
 			mProcessingProfileChannel.End();
 
 			VDPixmapBlt(mVideoFilterOutputPixmap, VDAsPixmap(*lastBitmap));

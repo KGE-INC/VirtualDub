@@ -294,16 +294,17 @@ static const LONG g_predefFrameRates[]={
 //
 ///////////////////////////////////////////////////////////////////////////
 
-class VDCaptureProjectUI : public IVDCaptureProjectCallback, public IVDCaptureProjectUI, public IVDUIFrameClient, public IVDTimerCallback {
+class VDCaptureProjectUI : public IVDCaptureProjectCallback, public IVDCaptureProjectUI, public IVDUIFrameClient {
 	enum DisplayAccelMode {
 		kDDP_Off = 0,
 		kDDP_Top,
 		kDDP_Bottom,
-		kDDP_Both,
+		kDDP_Progressive,
 		kDDP_TopFirst,
 		kDDP_BottomFirst,
 		kDDP_NonInterlaced_TopFirst,
 		kDDP_NonInterlaced_BottomFirst,
+		kDDP_Interlaced,
 		kDDP_ModeCount
 	};
 
@@ -344,8 +345,7 @@ protected:
 	void	SaveLocalSettings();
 
 	enum {
-		kTimerIdUpdateStats = 10,
-		kTimerIdUpdateFrame
+		kTimerIdUpdateStats = 10
 	};
 
 	enum {
@@ -446,13 +446,10 @@ protected:
 	void	OnUpdateStatus();
 	void	OnUpdateVumeter();
 	void	SyncAudioSourceToVideoSource();
-	void	OnUpdateAccelDisplay();
 	void	RebuildPanel();
 	void	UpdatePanel(VDCaptureStatus& status);
 	void	InitHotKeys();
 	void	ShutdownHotKeys();
-
-	void	TimerCallback();
 
 	static INT_PTR CALLBACK StaticPanelDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	INT_PTR PanelDlgProc(UINT msg, WPARAM wParam, LPARAM lParam);
@@ -477,14 +474,14 @@ protected:
 	bool		mbDisplayModeShadowed;
 
 	DisplayAccelMode mDisplayAccelMode;
-	VDCriticalSection	mDisplayAccelImageReadLock;
-	VDCriticalSection	mDisplayAccelImageWriteLock;
-	VDPixmapBuffer	mDisplayAccelImages[3];
-	volatile int	mDisplayAccelImagesPending;
+	VDCriticalSection	mDisplayAccelImageLock;
+
+	struct BufferedFrame : VDVideoDisplayFrame {
+		VDPixmapBuffer	mBuffer;
+	};
+
 	volatile bool	mbDisplayAccelActive;
 	VDAtomicInt		mDisplayAccelUpdateCounter;
-
-	bool	mbDisplayAccelSecondFieldPending;
 
 	bool	mbSwitchSourcesTogether;
 	bool	mbStretchToWindow;
@@ -539,7 +536,6 @@ protected:
 	VDCapturePreferences	mPreferences;
 
 //	VDOneShotTimer	mOneShotTimer;
-	VDCallbackTimer		mTimer;
 	VDRTProfileChannel	mDisplayProfileChannel;
 
 	VDAtomicInt		mRefCount;
@@ -639,12 +635,13 @@ bool VDCaptureProjectUI::Attach(VDGUIHandle hwnd, IVDCaptureProject *pProject) {
 	SetMenu((HWND)mhwnd, mhMenuCapture);
 
 	// create video display
-	mhwndDisplay = CreateWindowEx(0, VIDEODISPLAYCONTROLCLASS, "", WS_CHILD, 0, 0, 0, 0, (HWND)mhwnd, (HMENU)-1, g_hInst, NULL);
+	mhwndDisplay = (HWND)VDCreateDisplayWindowW32(WS_EX_NOPARENTNOTIFY, WS_CHILD, 0, 0, 0, 0, mhwnd);
 	if (!mhwndDisplay) {
 		Detach();
 		return false;
 	}
-	mpDisplay = VDGetIVideoDisplay(mhwndDisplay);
+
+	mpDisplay = VDGetIVideoDisplay((VDGUIHandle)mhwndDisplay);
 	mpDisplay->LockAcceleration(true);
 
 	// setup the status window
@@ -724,8 +721,6 @@ void VDCaptureProjectUI::Detach() {
 	if (!mhwnd)
 		return;
 
-	mTimer.Shutdown();
-
 	VDToggleCaptureNRDialog(NULL, NULL);
 
 	ShutdownTimingGraph();
@@ -743,8 +738,12 @@ void VDCaptureProjectUI::Detach() {
 
 	mpProject->SetDisplayMode(kDisplayNone);
 
-	if (mpDisplay)
+	if (mpDisplay) {
 		mpDisplay->Reset();
+		mpDisplay->Destroy();
+		mpDisplay = NULL;
+		mhwndDisplay = NULL;
+	}
 
 	SaveDeviceSettings(kSaveDevOnDisconnect);
 	SaveLocalSettings();
@@ -761,12 +760,6 @@ void VDCaptureProjectUI::Detach() {
 	if (mhwndStatus) {
 		DestroyWindow(mhwndStatus);
 		mhwndStatus = NULL;
-	}
-
-	if (mhwndDisplay) {
-		DestroyWindow(mhwndDisplay);
-		mhwndDisplay = NULL;
-		mpDisplay = NULL;
 	}
 
 	if (mhMenuAuxCapture) {
@@ -853,21 +846,12 @@ void VDCaptureProjectUI::SetDisplayAccelMode(DisplayAccelMode mode) {
 	bool wasActive = mDisplayAccelMode != kDDP_Off;
 	bool isActive = mode != kDDP_Off;
 
-	vdsynchronized(mDisplayAccelImageReadLock) {
-		vdsynchronized(mDisplayAccelImageWriteLock) {
-			mDisplayAccelMode = mode;
-		}
+	vdsynchronized(mDisplayAccelImageLock) {
+		mDisplayAccelMode = mode;
 	}
 
 	if (wasActive != isActive)
 		UpdateDisplayMode();
-
-	mTimer.Shutdown();
-	if (mDisplayAccelMode == kDDP_TopFirst ||
-		mDisplayAccelMode == kDDP_BottomFirst ||
-		mDisplayAccelMode == kDDP_NonInterlaced_TopFirst ||
-		mDisplayAccelMode == kDDP_BottomFirst)
-		mTimer.Init2(this, mpProject->GetFrameTime() >> 1);
 }
 
 void VDCaptureProjectUI::SetPCMAudioFormat(sint32 sampling_rate, bool is_16bit, bool is_stereo) {
@@ -2032,11 +2016,22 @@ namespace {
 	VDPixmap VDPixmapExtractField(const VDPixmap& src, bool field2) {
 		VDPixmap px(src);
 
-		px.h >>= 1;
-		if (field2)
-			vdptrstep(px.data, px.pitch);
-		px.pitch += px.pitch;
+		if (field2) {
+			const VDPixmapFormatInfo& info = VDPixmapGetInfo(px.format);
 
+			if (info.qh == 1)
+				vdptrstep(px.data, px.pitch);
+
+			if (!info.auxhbits) {
+				vdptrstep(px.data2, px.pitch2);
+				vdptrstep(px.data3, px.pitch3);
+			}
+		}
+
+		px.h >>= 1;
+		px.pitch += px.pitch;
+		px.pitch2 += px.pitch2;
+		px.pitch3 += px.pitch3;
 		return px;
 	}
 }
@@ -2055,24 +2050,13 @@ bool VDCaptureProjectUI::UICaptureAnalyzeBegin(const VDPixmap& px) {
 	if (mDisplayAccelMode == kDDP_NonInterlaced_TopFirst || mDisplayAccelMode == kDDP_NonInterlaced_BottomFirst)
 		px2 = VDPixmapExtractField(px, mDisplayAccelMode == kDDP_NonInterlaced_BottomFirst);
 
-	if (px2.format && mpDisplay->SetSource(false, px2)) {
+	if (px2.format && mpDisplay->SetSource(false, px2, NULL, NULL, true, mDisplayAccelMode == kDDP_Top || mDisplayAccelMode == kDDP_Bottom || mDisplayAccelMode == kDDP_Progressive)) {
 		success = true;
 		mbDisplayAccelActive = true;
 	} else {
 		mpDisplay->SetSourceMessage(VDLoadString(0, kVDST_CaptureUI, kVDM_CannotDisplayFormat));
 		VDDEBUG("CaptureUI: Unable to initialize video display acceleration!\n");
 	}
-
-	mDisplayAccelImagesPending = 0;
-	mbDisplayAccelSecondFieldPending = false;
-
-	if (mDisplayAccelMode == kDDP_TopFirst ||
-		mDisplayAccelMode == kDDP_BottomFirst ||
-		mDisplayAccelMode == kDDP_NonInterlaced_TopFirst ||
-		mDisplayAccelMode == kDDP_NonInterlaced_BottomFirst)
-		mTimer.Init2(this, mpProject->GetFrameTime() >> 1);
-
-//	::SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
 
 	return success;
 }
@@ -2081,12 +2065,9 @@ void VDCaptureProjectUI::UICaptureAnalyzeFrame(const VDPixmap& format) {
 	if (format.format) {
 		VDPixmap px(format);
 
-		mDisplayAccelImageReadLock.Lock();
-		vdsynchronized(mDisplayAccelImageWriteLock) {
-			if (mbHideOnCapture && mbCaptureActive) {
-				mDisplayAccelImageReadLock.Unlock();
+		vdsynchronized(mDisplayAccelImageLock) {
+			if (mbHideOnCapture && mbCaptureActive)
 				return;
-			}
 
 			// if we're in a field chop mode...
 			if (mDisplayAccelMode == kDDP_Top || mDisplayAccelMode == kDDP_Bottom) {
@@ -2108,54 +2089,85 @@ void VDCaptureProjectUI::UICaptureAnalyzeFrame(const VDPixmap& format) {
 				px.pitch3 += px.pitch3;
 			}
 
-			int index = mDisplayAccelImagesPending;
-			if (index >= 2) {
-				mDisplayAccelImageReadLock.Unlock();
-				return;
+			vdrefptr<VDVideoDisplayFrame> frame;
+			vdrefptr<VDVideoDisplayFrame> frame2;
+			if (!mpDisplay->RevokeBuffer(~frame))
+				frame = new_nothrow BufferedFrame;
+
+			if (mDisplayAccelMode == kDDP_NonInterlaced_TopFirst || mDisplayAccelMode == kDDP_NonInterlaced_BottomFirst) {
+				if (!mpDisplay->RevokeBuffer(~frame2))
+					frame2 = new_nothrow BufferedFrame;
 			}
 
-			mDisplayAccelImageReadLock.Unlock();
+			if (frame) {
+				BufferedFrame *bframe = static_cast<BufferedFrame *>(&*frame);
 
-			mDisplayAccelImages[index].assign(px);
-		}
+				if (mDisplayAccelMode == kDDP_NonInterlaced_TopFirst)
+					bframe->mBuffer.assign(VDPixmapExtractField(px, false));
+				else if (mDisplayAccelMode == kDDP_NonInterlaced_BottomFirst)
+					bframe->mBuffer.assign(VDPixmapExtractField(px, true));
+				else
+					bframe->mBuffer.assign(px);
+				bframe->mPixmap = bframe->mBuffer;
 
-		vdsynchronized(mDisplayAccelImageReadLock) {
-			vdsynchronized(mDisplayAccelImageWriteLock) {
-				if (mDisplayAccelImagesPending < 2)
-					++mDisplayAccelImagesPending;
+				switch(mDisplayAccelMode) {
+					case kDDP_Top:
+					case kDDP_Bottom:
+					case kDDP_Progressive:
+					case kDDP_NonInterlaced_TopFirst:
+					case kDDP_NonInterlaced_BottomFirst:
+						bframe->mFlags = IVDVideoDisplay::kAllFields | IVDVideoDisplay::kFirstField;
+						bframe->mbInterlaced = false;
+						break;
+					case kDDP_Interlaced:
+						bframe->mFlags = IVDVideoDisplay::kAllFields | IVDVideoDisplay::kFirstField;
+						bframe->mbInterlaced = true;
+						break;
+					case kDDP_TopFirst:
+						bframe->mFlags = IVDVideoDisplay::kEvenFieldOnly | IVDVideoDisplay::kFirstField | IVDVideoDisplay::kAutoFlipFields;
+						bframe->mbInterlaced = true;
+						break;
+					case kDDP_BottomFirst:
+						bframe->mFlags = IVDVideoDisplay::kOddFieldOnly | IVDVideoDisplay::kFirstField | IVDVideoDisplay::kAutoFlipFields;
+						bframe->mbInterlaced = true;
+						break;
+				}
+
+				if (!mbCaptureActive)
+					bframe->mFlags |= IVDVideoDisplay::kVSync;
+
+				mpDisplay->PostBuffer(bframe);
 			}
-		}
 
-		// It's pretty important that we not block against the main thread here.
-		// The reason is that the capture engine takes the video filter lock
-		// when calling us, so if the main thread is in the process of trying
-		// to modify the filtering parameters, we'd deadlock.
-		if (mDisplayAccelMode != kDDP_TopFirst &&
-			mDisplayAccelMode != kDDP_BottomFirst &&
-			mDisplayAccelMode != kDDP_NonInterlaced_TopFirst &&
-			mDisplayAccelMode != kDDP_NonInterlaced_BottomFirst) {
-			if (mDisplayAccelUpdateCounter == 0) {
-				++mDisplayAccelUpdateCounter;
-				PostMessage((HWND)mhwnd, WM_TIMER, kTimerIdUpdateFrame, 0);
+			if (frame2) {
+				BufferedFrame *bframe = static_cast<BufferedFrame *>(&*frame2);
+				if (mDisplayAccelMode == kDDP_NonInterlaced_TopFirst)
+					bframe->mBuffer.assign(VDPixmapExtractField(px, true));
+				else
+					bframe->mBuffer.assign(VDPixmapExtractField(px, false));
+
+				bframe->mPixmap = bframe->mBuffer;
+				bframe->mFlags = IVDVideoDisplay::kAllFields | IVDVideoDisplay::kFirstField;
+				bframe->mbInterlaced = false;
+
+				if (!mbCaptureActive)
+					bframe->mFlags |= IVDVideoDisplay::kVSync;
+
+				mpDisplay->PostBuffer(bframe);
 			}
 		}
 	}
 }
 
 void VDCaptureProjectUI::UICaptureAnalyzeEnd() {
-	mTimer.Shutdown();
-
 //	::SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_NORMAL);
 
-	vdsynchronized(mDisplayAccelImageReadLock) {
-		vdsynchronized(mDisplayAccelImageWriteLock) {
-			mbDisplayAccelActive = false;
-			mDisplayAccelImagesPending = 0;
-			mDisplayAccelImages[0].clear();
-			mDisplayAccelImages[1].clear();
-			mDisplayAccelImages[2].clear();
-		}
+	vdsynchronized(mDisplayAccelImageLock) {
+		mbDisplayAccelActive = false;
 	}
+
+	mpDisplay->FlushBuffers();
+
 	mpDisplay->Reset();
 	ShowWindow(mhwndDisplay, SW_HIDE);
 }
@@ -2359,9 +2371,6 @@ LRESULT VDCaptureProjectUI::CommonWndProc(UINT msg, WPARAM wParam, LPARAM lParam
 						SetCursor(NULL);
 					}
 				}
-			} else if (wParam == kTimerIdUpdateFrame) {
-		case WM_APP+2:
-				OnUpdateAccelDisplay();
 			}
 			break;
 
@@ -2528,7 +2537,8 @@ void VDCaptureProjectUI::OnInitMenu(HMENU hMenu) {
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_HWACCEL_NONE,	mDisplayAccelMode == kDDP_Off);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_HWACCEL_TOP,		mDisplayAccelMode == kDDP_Top);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_HWACCEL_BOTTOM,	mDisplayAccelMode == kDDP_Bottom);
-	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_HWACCEL_BOTH,	mDisplayAccelMode == kDDP_Both);
+	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_HWACCEL_BOTH,	mDisplayAccelMode == kDDP_Progressive);
+	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_HWACCEL_INTERLACED,	mDisplayAccelMode == kDDP_Interlaced);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_HWACCEL_EVENFIRST,	mDisplayAccelMode == kDDP_TopFirst);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_HWACCEL_ODDFIRST,	mDisplayAccelMode == kDDP_BottomFirst);
 	VDCheckMenuItemByCommandW32	(hMenu, ID_CAPTURE_HWACCEL_NONINTEVEN,	mDisplayAccelMode == kDDP_NonInterlaced_TopFirst);
@@ -3335,7 +3345,7 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 			break;
 
 		case ID_CAPTURE_HWACCEL_BOTH:
-			SetDisplayAccelMode(kDDP_Both);
+			SetDisplayAccelMode(kDDP_Progressive);
 			break;
 
 		case ID_CAPTURE_HWACCEL_EVENFIRST:
@@ -3352,6 +3362,10 @@ bool VDCaptureProjectUI::OnCommand(UINT id) {
 
 		case ID_CAPTURE_HWACCEL_NONINTODD:
 			SetDisplayAccelMode(kDDP_NonInterlaced_BottomFirst);
+			break;
+
+		case ID_CAPTURE_HWACCEL_INTERLACED:
+			SetDisplayAccelMode(kDDP_Interlaced);
 			break;
 
 		case ID_CAPTURE_ENABLETIMINGLOG:
@@ -3416,153 +3430,6 @@ void VDCaptureProjectUI::OnUpdateVumeter() {
 		IVDUICaptureVumeter *pVumeter = vdpoly_cast<IVDUICaptureVumeter *>(mpVumeter);
 
 		pVumeter->SetPeakLevels(mPeakL, mPeakR);
-	}
-}
-
-void VDCaptureProjectUI::OnUpdateAccelDisplay() {
-	int count = mDisplayAccelUpdateCounter;
-
-	if (!count)
-		return;
-
-	--mDisplayAccelUpdateCounter;
-
-	if (mpDisplay && mbDisplayAccelActive) {
-		bool doField2 = false;
-
-		vdsynchronized(mDisplayAccelImageReadLock) {
-			vdsynchronized(mDisplayAccelImageWriteLock) {
-				if (mDisplayAccelImages[0].data && mDisplayAccelImages[0].format && mDisplayAccelImagesPending) {
-					// Do not allow VSync when capture is active, to get better timing.
-					uint32 vsyncflag = 0;
-
-					if (!mbCaptureActive && (g_prefs.fDisplay & Preferences::kDisplayEnableVSync))
-						vsyncflag = IVDVideoDisplay::kVSync;
-
-					bool displayFieldsAsFrames = mDisplayAccelMode == kDDP_NonInterlaced_BottomFirst || mDisplayAccelMode == kDDP_NonInterlaced_TopFirst;
-
-					if (mDisplayAccelImagesPending > 1) {
-						if (displayFieldsAsFrames)
-							mbDisplayAccelSecondFieldPending = false;
-
-						if (!mbDisplayAccelSecondFieldPending) {
-							while(mDisplayAccelImagesPending > 1) {
-								--mDisplayAccelImagesPending;
-								mDisplayAccelImages[0].swap(mDisplayAccelImages[1]);
-								mDisplayAccelImages[1].swap(mDisplayAccelImages[2]);
-							}
-						}
-					}
-
-					if (displayFieldsAsFrames) {
-						bool field2 = mDisplayAccelMode == kDDP_NonInterlaced_BottomFirst;
-
-						if (mbDisplayAccelSecondFieldPending)
-							field2 = !field2;
-
-						VDPixmap px2(VDPixmapExtractField(mDisplayAccelImages[0], field2));
-
-						mpDisplay->SetSource(false, px2);
-
-						mDisplayAccelImageWriteLock.Unlock();
-						mDisplayProfileChannel.Begin(0xFFE0E0, "Update");
-						mpDisplay->Update(IVDVideoDisplay::kAllFields | IVDVideoDisplay::kFirstField | vsyncflag);
-						mDisplayProfileChannel.End();
-
-						mDisplayAccelImageWriteLock.Lock();
-
-						if (!mbDisplayAccelSecondFieldPending)
-							mbDisplayAccelSecondFieldPending = true;
-						else {
-							mbDisplayAccelSecondFieldPending = false;
-							if (mDisplayAccelImagesPending) {
-								--mDisplayAccelImagesPending;
-								mDisplayAccelImages[0].swap(mDisplayAccelImages[1]);
-								mDisplayAccelImages[1].swap(mDisplayAccelImages[2]);
-							}
-						}
-					} else if (!mbDisplayAccelSecondFieldPending) {
-						mpDisplay->SetSource(false, mDisplayAccelImages[0]);
-
-						mbDisplayAccelSecondFieldPending = false;
-
-						mDisplayAccelImageWriteLock.Unlock();
-
-						switch(mDisplayAccelMode) {
-							case kDDP_Top:
-							case kDDP_Both:
-							case kDDP_Bottom:
-								mDisplayProfileChannel.Begin(0xFFE0E0, "Update");
-								mpDisplay->Update(IVDVideoDisplay::kAllFields | IVDVideoDisplay::kFirstField | vsyncflag);
-								mDisplayProfileChannel.End();
-								break;
-
-							case kDDP_TopFirst:
-								mDisplayProfileChannel.Begin(0xFFD0E0, "Even");
-								mpDisplay->Update(IVDVideoDisplay::kEvenFieldOnly | IVDVideoDisplay::kFirstField | vsyncflag);
-								mDisplayProfileChannel.End();
-								mbDisplayAccelSecondFieldPending = true;
-								doField2 = true;
-								break;
-
-							case kDDP_BottomFirst:
-								mDisplayProfileChannel.Begin(0xFFE0D0, "Odd");
-								mpDisplay->Update(IVDVideoDisplay::kOddFieldOnly | IVDVideoDisplay::kFirstField | vsyncflag);
-								mDisplayProfileChannel.End();
-								mbDisplayAccelSecondFieldPending = true;
-								doField2 = true;
-								break;
-						}
-
-						mDisplayAccelImageWriteLock.Lock();
-
-						if (!doField2) {
-							if (mDisplayAccelImagesPending) {
-								--mDisplayAccelImagesPending;
-								mDisplayAccelImages[0].swap(mDisplayAccelImages[1]);
-								mDisplayAccelImages[1].swap(mDisplayAccelImages[2]);
-							}
-						}
-					} else {
-						mDisplayAccelImageWriteLock.Unlock();
-						switch(mDisplayAccelMode) {
-							case kDDP_TopFirst:
-								mDisplayProfileChannel.Begin(0xFFE0D0, "Odd");
-								mpDisplay->Update(IVDVideoDisplay::kOddFieldOnly | vsyncflag);
-								mDisplayProfileChannel.End();
-								break;
-
-							case kDDP_BottomFirst:
-								mDisplayProfileChannel.Begin(0xFFD0E0, "Even");
-								mpDisplay->Update(IVDVideoDisplay::kEvenFieldOnly | vsyncflag);
-								mDisplayProfileChannel.End();
-								break;
-						}
-						mDisplayAccelImageWriteLock.Lock();
-
-						mbDisplayAccelSecondFieldPending = false;
-						if (mDisplayAccelImagesPending) {
-							--mDisplayAccelImagesPending;
-							mDisplayAccelImages[0].swap(mDisplayAccelImages[1]);
-							mDisplayAccelImages[1].swap(mDisplayAccelImages[2]);
-						}
-					}
-				}
-
-				if (mDisplayAccelMode == kDDP_TopFirst || mDisplayAccelMode == kDDP_BottomFirst) {
-					static float lastDelta = 0;
-					float delta = mpDisplay->GetSyncDelta();
-
-					float d = delta - lastDelta;
-
-					if (fabsf(d) < 0.3f)
-						mTimer.AdjustRate(VDRoundToInt(-d * 10.0f));
-
-					if (fabsf(delta) < 0.3f)
-						mTimer.SetRateDelta(VDRoundToInt(-delta * 1000.0f));
-				}
-			}
-		}
 	}
 }
 
@@ -4023,19 +3890,6 @@ INT_PTR VDCaptureProjectUI::PanelDlgProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	}
 
 	return FALSE;
-}
-
-void VDCaptureProjectUI::TimerCallback() {
-	if (mDisplayAccelMode == kDDP_TopFirst ||
-		mDisplayAccelMode == kDDP_BottomFirst ||
-		mDisplayAccelMode == kDDP_NonInterlaced_TopFirst ||
-		mDisplayAccelMode == kDDP_NonInterlaced_BottomFirst)
-	{
-		if (mDisplayAccelUpdateCounter < 2) {
-			++mDisplayAccelUpdateCounter;
-			PostMessage((HWND)mhwnd, WM_TIMER, kTimerIdUpdateFrame, 0);
-		}
-	}
 }
 
 ////////////////////////////////////////////////////////////////////////////

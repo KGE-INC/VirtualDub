@@ -367,12 +367,12 @@ void InputFileAVI::setOptions(InputFileOptions *_ifo) {
 	lForceAudioHz		= ifo->opts.lForceAudioHz;
 }
 
-InputFileOptions *InputFileAVI::createOptions(const char *buf) {
+InputFileOptions *InputFileAVI::createOptions(const void *buf, uint32 len) {
 	InputFileAVIOptions *ifo = new InputFileAVIOptions();
 
 	if (!ifo) throw MyMemoryError();
 
-	if (!ifo->read(buf)) {
+	if (!ifo->read((const char *)buf)) {
 		delete ifo;
 		return NULL;
 	}

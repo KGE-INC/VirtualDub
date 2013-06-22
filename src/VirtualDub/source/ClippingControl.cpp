@@ -367,20 +367,20 @@ public:
 	void DisplayRequestUpdate(IVDVideoDisplay *pDisp);
 private:
 	enum {
-		IDC_X1_STATIC	= 500,
-		IDC_X1_EDIT		= 501,
-		IDC_X1_SPIN		= 502,
-		IDC_Y1_STATIC	= 503,
-		IDC_Y1_EDIT		= 504,
-		IDC_Y1_SPIN		= 505,
-		IDC_X2_STATIC	= 506,
-		IDC_X2_EDIT		= 507,
-		IDC_X2_SPIN		= 508,
-		IDC_Y2_STATIC	= 509,
-		IDC_Y2_EDIT		= 510,
-		IDC_Y2_SPIN		= 511,
-		IDC_POSITION	= 512,
-		IDC_VIDEODISPLAY= 513
+		kIDC_X1_STATIC		= 500,
+		kIDC_X1_EDIT		= 501,
+		kIDC_X1_SPIN		= 502,
+		kIDC_Y1_STATIC		= 503,
+		kIDC_Y1_EDIT		= 504,
+		kIDC_Y1_SPIN		= 505,
+		kIDC_X2_STATIC		= 506,
+		kIDC_X2_EDIT		= 507,
+		kIDC_X2_SPIN		= 508,
+		kIDC_Y2_STATIC		= 509,
+		kIDC_Y2_EDIT		= 510,
+		kIDC_Y2_SPIN		= 511,
+		kIDC_POSITION		= 512,
+		kIDC_VIDEODISPLAY	= 513
 	};
 
 	VDClippingControl(HWND hwnd);
@@ -485,18 +485,18 @@ void VDClippingControl::SetBitmapSize(int sourceW, int sourceH) {
 	mInvSourceWidth		= sourceW ? 1.0 / sourceW : 0.0;
 	mInvSourceHeight	= sourceH ? 1.0 / sourceH : 0.0;
 
-	SendMessage(GetDlgItem(mhwnd, IDC_X1_SPIN), UDM_SETRANGE, 0, (LPARAM)MAKELONG(sourceW,0));
-	SendMessage(GetDlgItem(mhwnd, IDC_Y1_SPIN), UDM_SETRANGE, 0, (LPARAM)MAKELONG(0,sourceH));
+	SendMessage(GetDlgItem(mhwnd, kIDC_X1_SPIN), UDM_SETRANGE, 0, (LPARAM)MAKELONG(sourceW,0));
+	SendMessage(GetDlgItem(mhwnd, kIDC_Y1_SPIN), UDM_SETRANGE, 0, (LPARAM)MAKELONG(0,sourceH));
 
-	hwndItem = GetDlgItem(mhwnd, IDC_X2_SPIN);
+	hwndItem = GetDlgItem(mhwnd, kIDC_X2_SPIN);
 	SendMessage(hwndItem, UDM_SETRANGE, 0, (LPARAM)MAKELONG(sourceW,0));
 
-	hwndItem = GetDlgItem(mhwnd, IDC_Y2_SPIN);
+	hwndItem = GetDlgItem(mhwnd, kIDC_Y2_SPIN);
 	SendMessage(hwndItem, UDM_SETRANGE, 0, (LPARAM)MAKELONG(sourceH,0));
 
 	EnumChildWindows(mhwnd, ShowChildrenProc, 0);
 
-	hwndItem = GetDlgItem(mhwnd, IDC_VIDEODISPLAY);
+	hwndItem = GetDlgItem(mhwnd, kIDC_VIDEODISPLAY);
 	ShowWindow(hwndItem, SW_HIDE);
 
 	pOverlay->SetSourceSize(sourceW, sourceH);
@@ -513,10 +513,10 @@ void VDClippingControl::SetClipBounds(const vdrect32& r) {
 	pOverlay->SetBounds(x1, y1, x2, y2);
 
 	fInhibitRefresh = TRUE;
-	SetDlgItemInt(mhwnd, IDC_X1_EDIT, x1, FALSE);
-	SetDlgItemInt(mhwnd, IDC_Y1_EDIT, y1, FALSE);
-	SetDlgItemInt(mhwnd, IDC_X2_EDIT, x2, FALSE);
-	SetDlgItemInt(mhwnd, IDC_Y2_EDIT, y2, FALSE);
+	SetDlgItemInt(mhwnd, kIDC_X1_EDIT, x1, FALSE);
+	SetDlgItemInt(mhwnd, kIDC_Y1_EDIT, y1, FALSE);
+	SetDlgItemInt(mhwnd, kIDC_X2_EDIT, x2, FALSE);
+	SetDlgItemInt(mhwnd, kIDC_Y2_EDIT, y2, FALSE);
 	fInhibitRefresh = FALSE;
 
 	ResetDisplayBounds();
@@ -534,7 +534,7 @@ void VDClippingControl::AutoSize(int borderw, int borderh) {
 	int h2 = mSourceHeight;
 
 	int wpad = mOverlayX + 8;
-	int hpad = (GetDlgItem(mhwnd, IDC_POSITION)?64:0) + mOverlayY + 8;
+	int hpad = (GetDlgItem(mhwnd, kIDC_POSITION)?64:0) + mOverlayY + 8;
 
 	RECT rWorkArea;
 	if (SystemParametersInfo(SPI_GETWORKAREA, 0, &rWorkArea, FALSE)) {
@@ -558,29 +558,29 @@ void VDClippingControl::AutoSize(int borderw, int borderh) {
 }
 
 void VDClippingControl::BlitFrame(const VDPixmap *px) {
-	HWND hwndDisplay = GetDlgItem(mhwnd, IDC_VIDEODISPLAY);
+	HWND hwndDisplay = GetDlgItem(mhwnd, kIDC_VIDEODISPLAY);
 	bool success = false;
 
 	if (px) {
-		IVDVideoDisplay *pVD = VDGetIVideoDisplay(hwndDisplay);
+		IVDVideoDisplay *pVD = VDGetIVideoDisplay((VDGUIHandle)hwndDisplay);
 
 		success = pVD->SetSource(true, *px);
 	}
 
-	ShowWindow(GetDlgItem(mhwnd, IDC_VIDEODISPLAY), success ? SW_SHOWNA : SW_HIDE);
+	ShowWindow(GetDlgItem(mhwnd, kIDC_VIDEODISPLAY), success ? SW_SHOWNA : SW_HIDE);
 }
 
 BOOL CALLBACK VDClippingControl::InitChildrenProc(HWND hwnd, LPARAM lParam) {
 	SendMessage(hwnd, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), (LPARAM)MAKELONG(FALSE, 0));
 
 	switch(GetWindowLong(hwnd, GWL_ID)) {
-	case IDC_X1_STATIC:		SendMessage(hwnd, WM_SETTEXT, 0, (LPARAM)"X1 offset");
+	case kIDC_X1_STATIC:		SendMessage(hwnd, WM_SETTEXT, 0, (LPARAM)"X1 offset");
 							break;
-	case IDC_Y1_STATIC:		SendMessage(hwnd, WM_SETTEXT, 0, (LPARAM)"Y1 offset");
+	case kIDC_Y1_STATIC:		SendMessage(hwnd, WM_SETTEXT, 0, (LPARAM)"Y1 offset");
 							break;
-	case IDC_X2_STATIC:		SendMessage(hwnd, WM_SETTEXT, 0, (LPARAM)"X2 offset");
+	case kIDC_X2_STATIC:		SendMessage(hwnd, WM_SETTEXT, 0, (LPARAM)"X2 offset");
 							break;
-	case IDC_Y2_STATIC:		SendMessage(hwnd, WM_SETTEXT, 0, (LPARAM)"Y2 offset");
+	case kIDC_Y2_STATIC:		SendMessage(hwnd, WM_SETTEXT, 0, (LPARAM)"Y2 offset");
 							break;
 	}
 
@@ -594,8 +594,8 @@ BOOL CALLBACK VDClippingControl::ShowChildrenProc(HWND hWnd, LPARAM lParam) {
 }
 
 void VDClippingControl::ResetDisplayBounds() {
-	HWND hwndDisplay = GetDlgItem(mhwnd, IDC_VIDEODISPLAY);
-	IVDVideoDisplay *pVD = VDGetIVideoDisplay(hwndDisplay);
+	HWND hwndDisplay = GetDlgItem(mhwnd, kIDC_VIDEODISPLAY);
+	IVDVideoDisplay *pVD = VDGetIVideoDisplay((VDGUIHandle)hwndDisplay);
 
 	// scale bounds to actual display size
 	int scaledx1 = VDCeilToInt(x1 * mInvSourceWidth  * mDisplayWidth  - 0.5);
@@ -614,28 +614,28 @@ void VDClippingControl::ResetDisplayBounds() {
 }
 
 bool VDClippingControl::VerifyParams() {
-	x1 = GetDlgItemInt(mhwnd, IDC_X1_EDIT, NULL, TRUE);
-	x2 = GetDlgItemInt(mhwnd, IDC_X2_EDIT, NULL, TRUE);
-	y1 = GetDlgItemInt(mhwnd, IDC_Y1_EDIT, NULL, TRUE);
-	y2 = GetDlgItemInt(mhwnd, IDC_Y2_EDIT, NULL, TRUE);
+	x1 = GetDlgItemInt(mhwnd, kIDC_X1_EDIT, NULL, TRUE);
+	x2 = GetDlgItemInt(mhwnd, kIDC_X2_EDIT, NULL, TRUE);
+	y1 = GetDlgItemInt(mhwnd, kIDC_Y1_EDIT, NULL, TRUE);
+	y2 = GetDlgItemInt(mhwnd, kIDC_Y2_EDIT, NULL, TRUE);
 
 	if (x1<0) {
-		SetFocus(GetDlgItem(mhwnd, IDC_X1_EDIT));
+		SetFocus(GetDlgItem(mhwnd, kIDC_X1_EDIT));
 		MessageBeep(MB_ICONQUESTION);
 		return false;
 	}
 	if (y1<0) {
-		SetFocus(GetDlgItem(mhwnd, IDC_Y1_EDIT));
+		SetFocus(GetDlgItem(mhwnd, kIDC_Y1_EDIT));
 		MessageBeep(MB_ICONQUESTION);
 		return false;
 	}
 	if (x2<0) {
-		SetFocus(GetDlgItem(mhwnd, IDC_X2_EDIT));
+		SetFocus(GetDlgItem(mhwnd, kIDC_X2_EDIT));
 		MessageBeep(MB_ICONQUESTION);
 		return false;
 	}
 	if (y2<0) {
-		SetFocus(GetDlgItem(mhwnd, IDC_Y2_EDIT));
+		SetFocus(GetDlgItem(mhwnd, kIDC_Y2_EDIT));
 		MessageBeep(MB_ICONQUESTION);
 		return false;
 	}
@@ -663,7 +663,7 @@ LRESULT CALLBACK VDClippingControl::StaticWndProc(HWND hwnd, UINT msg, WPARAM wP
 
 LRESULT VDClippingControl::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 	if ((msg >= CCM__FIRST && msg < CCM__LAST) || msg == WM_SETTEXT) {
-		HWND hWndPosition = GetDlgItem(mhwnd, IDC_POSITION);
+		HWND hWndPosition = GetDlgItem(mhwnd, kIDC_POSITION);
 
 		if (hWndPosition)
 			return SendMessage(hWndPosition, msg, wParam, lParam);
@@ -685,27 +685,28 @@ LRESULT VDClippingControl::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 			mOverlayY = (14*duY)/8;
 
 			fInhibitRefresh = true;
-			CreateWindowEx(0				,"STATIC"		,NULL,WS_CHILD | SS_LEFT							,( 0*duX)/4, ( 2*duY)/8, (22*duX)/4, ( 8*duY)/8, mhwnd, (HMENU)IDC_X1_STATIC	, g_hInst, NULL);
-			CreateWindowEx(WS_EX_CLIENTEDGE	, "EDIT"		,NULL,WS_TABSTOP | WS_CHILD | ES_LEFT | ES_NUMBER				,(23*duX)/4, ( 0*duY)/8, (24*duX)/4, (10*duY)/8, mhwnd, (HMENU)IDC_X1_EDIT	, g_hInst, NULL);
-			CreateWindowEx(WS_EX_CLIENTEDGE	,UPDOWN_CLASS	,NULL,WS_CHILD | UDS_AUTOBUDDY | UDS_ALIGNRIGHT	| UDS_SETBUDDYINT, 0, 0,	 ( 2*duX)/4, (10*duY)/8, mhwnd, (HMENU)IDC_X1_SPIN	, g_hInst, NULL);
-			CreateWindowEx(0				,"STATIC"		,NULL,WS_CHILD | SS_LEFT							,( 0*duX)/4, (16*duY)/8, (22*duX)/4, ( 8*duY)/8, mhwnd, (HMENU)IDC_Y1_STATIC	, g_hInst, NULL);
-			CreateWindowEx(WS_EX_CLIENTEDGE	, "EDIT"		,NULL,WS_TABSTOP | WS_CHILD | ES_LEFT | ES_NUMBER				,(23*duX)/4, (14*duY)/8, (24*duX)/4, (10*duY)/8, mhwnd, (HMENU)IDC_Y1_EDIT	, g_hInst, NULL);
-			CreateWindowEx(WS_EX_CLIENTEDGE	,UPDOWN_CLASS	,NULL,WS_CHILD | UDS_AUTOBUDDY | UDS_ALIGNRIGHT	| UDS_SETBUDDYINT, 0, 0,	 ( 2*duX)/4, (10*duY)/8, mhwnd, (HMENU)IDC_Y1_SPIN	, g_hInst, NULL);
-			CreateWindowEx(0				,"STATIC"		,NULL,WS_CHILD | SS_LEFT							,0         , 0         , (22*duX)/4, ( 8*duY)/8, mhwnd, (HMENU)IDC_X2_STATIC	, g_hInst, NULL);
-			CreateWindowEx(WS_EX_CLIENTEDGE	, "EDIT"		,NULL,WS_TABSTOP | WS_CHILD | ES_LEFT | ES_NUMBER				,0         , 0         , (24*duX)/4, (10*duY)/8, mhwnd, (HMENU)IDC_X2_EDIT	, g_hInst, NULL);
-			CreateWindowEx(WS_EX_CLIENTEDGE	,UPDOWN_CLASS	,NULL,WS_CHILD | UDS_ALIGNRIGHT	| UDS_SETBUDDYINT	,0         , 0         , ( 2*duX)/4, (10*duY)/8, mhwnd, (HMENU)IDC_X2_SPIN	, g_hInst, NULL);
-			CreateWindowEx(0				,"STATIC"		,NULL,WS_CHILD | SS_LEFT							,0         , 0         , (22*duX)/4, ( 8*duY)/8, mhwnd, (HMENU)IDC_Y2_STATIC	, g_hInst, NULL);
-			CreateWindowEx(WS_EX_CLIENTEDGE	, "EDIT"		,NULL,WS_TABSTOP | WS_CHILD | ES_LEFT | ES_NUMBER				,0         , 0         , (24*duX)/4, (10*duY)/8, mhwnd, (HMENU)IDC_Y2_EDIT	, g_hInst, NULL);
-			CreateWindowEx(WS_EX_CLIENTEDGE	,UPDOWN_CLASS	,NULL,WS_CHILD | UDS_ALIGNRIGHT	| UDS_SETBUDDYINT	,0         , 0         , ( 2*duX)/4, (10*duY)/8, mhwnd, (HMENU)IDC_Y2_SPIN	, g_hInst, NULL);
-			HWND hwndDisplay = CreateWindowEx(0,       VIDEODISPLAYCONTROLCLASS,NULL,WS_CHILD, 0, 0, 0, 0, mhwnd, (HMENU)IDC_VIDEODISPLAY, g_hInst, NULL);
+			CreateWindowEx(0				,"STATIC"		,NULL,WS_CHILD | SS_LEFT							,( 0*duX)/4, ( 2*duY)/8, (22*duX)/4, ( 8*duY)/8, mhwnd, (HMENU)kIDC_X1_STATIC	, g_hInst, NULL);
+			CreateWindowEx(WS_EX_CLIENTEDGE	, "EDIT"		,NULL,WS_TABSTOP | WS_CHILD | ES_LEFT | ES_NUMBER				,(23*duX)/4, ( 0*duY)/8, (24*duX)/4, (10*duY)/8, mhwnd, (HMENU)kIDC_X1_EDIT	, g_hInst, NULL);
+			CreateWindowEx(WS_EX_CLIENTEDGE	,UPDOWN_CLASS	,NULL,WS_CHILD | UDS_AUTOBUDDY | UDS_ALIGNRIGHT	| UDS_SETBUDDYINT, 0, 0,	 ( 2*duX)/4, (10*duY)/8, mhwnd, (HMENU)kIDC_X1_SPIN	, g_hInst, NULL);
+			CreateWindowEx(0				,"STATIC"		,NULL,WS_CHILD | SS_LEFT							,( 0*duX)/4, (16*duY)/8, (22*duX)/4, ( 8*duY)/8, mhwnd, (HMENU)kIDC_Y1_STATIC	, g_hInst, NULL);
+			CreateWindowEx(WS_EX_CLIENTEDGE	, "EDIT"		,NULL,WS_TABSTOP | WS_CHILD | ES_LEFT | ES_NUMBER				,(23*duX)/4, (14*duY)/8, (24*duX)/4, (10*duY)/8, mhwnd, (HMENU)kIDC_Y1_EDIT	, g_hInst, NULL);
+			CreateWindowEx(WS_EX_CLIENTEDGE	,UPDOWN_CLASS	,NULL,WS_CHILD | UDS_AUTOBUDDY | UDS_ALIGNRIGHT	| UDS_SETBUDDYINT, 0, 0,	 ( 2*duX)/4, (10*duY)/8, mhwnd, (HMENU)kIDC_Y1_SPIN	, g_hInst, NULL);
+			CreateWindowEx(0				,"STATIC"		,NULL,WS_CHILD | SS_LEFT							,0         , 0         , (22*duX)/4, ( 8*duY)/8, mhwnd, (HMENU)kIDC_X2_STATIC	, g_hInst, NULL);
+			CreateWindowEx(WS_EX_CLIENTEDGE	, "EDIT"		,NULL,WS_TABSTOP | WS_CHILD | ES_LEFT | ES_NUMBER				,0         , 0         , (24*duX)/4, (10*duY)/8, mhwnd, (HMENU)kIDC_X2_EDIT	, g_hInst, NULL);
+			CreateWindowEx(WS_EX_CLIENTEDGE	,UPDOWN_CLASS	,NULL,WS_CHILD | UDS_ALIGNRIGHT	| UDS_SETBUDDYINT	,0         , 0         , ( 2*duX)/4, (10*duY)/8, mhwnd, (HMENU)kIDC_X2_SPIN	, g_hInst, NULL);
+			CreateWindowEx(0				,"STATIC"		,NULL,WS_CHILD | SS_LEFT							,0         , 0         , (22*duX)/4, ( 8*duY)/8, mhwnd, (HMENU)kIDC_Y2_STATIC	, g_hInst, NULL);
+			CreateWindowEx(WS_EX_CLIENTEDGE	, "EDIT"		,NULL,WS_TABSTOP | WS_CHILD | ES_LEFT | ES_NUMBER				,0         , 0         , (24*duX)/4, (10*duY)/8, mhwnd, (HMENU)kIDC_Y2_EDIT	, g_hInst, NULL);
+			CreateWindowEx(WS_EX_CLIENTEDGE	,UPDOWN_CLASS	,NULL,WS_CHILD | UDS_ALIGNRIGHT	| UDS_SETBUDDYINT	,0         , 0         , ( 2*duX)/4, (10*duY)/8, mhwnd, (HMENU)kIDC_Y2_SPIN	, g_hInst, NULL);
+			HWND hwndDisplay = (HWND)VDCreateDisplayWindowW32(0, WS_CHILD, 0, 0, 0, 0, (VDGUIHandle)mhwnd);
+			SetWindowLong(hwndDisplay, GWL_ID, kIDC_VIDEODISPLAY);
 
-			HWND hwndItem = GetDlgItem(mhwnd, IDC_X2_SPIN);
-			SendMessage(hwndItem, UDM_SETBUDDY, (WPARAM)GetDlgItem(mhwnd, IDC_X2_EDIT), 0);
-			hwndItem = GetDlgItem(mhwnd, IDC_Y2_SPIN);
-			SendMessage(hwndItem, UDM_SETBUDDY, (WPARAM)GetDlgItem(mhwnd, IDC_Y2_EDIT), 0);
+			HWND hwndItem = GetDlgItem(mhwnd, kIDC_X2_SPIN);
+			SendMessage(hwndItem, UDM_SETBUDDY, (WPARAM)GetDlgItem(mhwnd, kIDC_X2_EDIT), 0);
+			hwndItem = GetDlgItem(mhwnd, kIDC_Y2_SPIN);
+			SendMessage(hwndItem, UDM_SETBUDDY, (WPARAM)GetDlgItem(mhwnd, kIDC_Y2_EDIT), 0);
 
 			if (GetWindowLong(mhwnd, GWL_STYLE) & CCS_POSITION)
-				CreateWindowEx(0,POSITIONCONTROLCLASS,NULL,WS_CHILD									,0,0,0,64,mhwnd,(HMENU)IDC_POSITION,g_hInst,NULL);
+				CreateWindowEx(0,POSITIONCONTROLCLASS,NULL,WS_CHILD									,0,0,0,64,mhwnd,(HMENU)kIDC_POSITION,g_hInst,NULL);
 
 			SetWindowLong(mhwnd, GWL_EXSTYLE, GetWindowLong(mhwnd, GWL_EXSTYLE) | WS_EX_CONTROLPARENT);
 
@@ -713,7 +714,7 @@ LRESULT VDClippingControl::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 
 			pOverlay = VDClippingControlOverlay::Create(mhwnd, 0, 0, 0, 0, 0);
 
-			IVDVideoDisplay *pVD = VDGetIVideoDisplay(hwndDisplay);
+			IVDVideoDisplay *pVD = VDGetIVideoDisplay((VDGUIHandle)hwndDisplay);
 
 			pVD->SetCallback(this);
 			
@@ -754,12 +755,23 @@ LRESULT VDClippingControl::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 		}
 		return TRUE;
 
+	case WM_DESTROY:
+		{
+			HWND hwndDisplay = GetDlgItem(mhwnd, kIDC_VIDEODISPLAY);
+			if (hwndDisplay) {
+				IVDVideoDisplay *pDisp = VDGetIVideoDisplay((VDGUIHandle)hwndDisplay);
+
+				pDisp->Destroy();
+			}
+		}
+		break;
+
 	case WM_COMMAND:
 		switch(LOWORD(wParam)) {
-		case IDC_X1_EDIT:
-		case IDC_X2_EDIT:
-		case IDC_Y1_EDIT:
-		case IDC_Y2_EDIT:
+		case kIDC_X1_EDIT:
+		case kIDC_X2_EDIT:
+		case kIDC_Y1_EDIT:
+		case kIDC_Y2_EDIT:
 			if (!fInhibitRefresh)
 				if (VerifyParams()) {
 					RECT r;
@@ -773,7 +785,7 @@ LRESULT VDClippingControl::WndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
 					ResetDisplayBounds();
 				}
 			return 0;
-		case IDC_POSITION:
+		case kIDC_POSITION:
 			SendMessage(GetParent(mhwnd), WM_COMMAND, MAKELONG(GetWindowLong(mhwnd, GWL_ID), HIWORD(wParam)), (LPARAM)mhwnd);
 			return 0;
 		}
@@ -846,7 +858,7 @@ void VDClippingControl::OnSize(int w, int h) {
 	duX = LOWORD(du);
 	duY = HIWORD(du);
 
-	HWND hwndPosition = GetDlgItem(mhwnd, IDC_POSITION);
+	HWND hwndPosition = GetDlgItem(mhwnd, kIDC_POSITION);
 	if (hwndPosition) {
 		h -= 64;
 		SetWindowPos(hwndPosition, NULL, 0, h, w, 64, SWP_NOZORDER | SWP_NOACTIVATE);
@@ -858,8 +870,8 @@ void VDClippingControl::OnSize(int w, int h) {
 	mDisplayWidth = overlayW - 8;
 	mDisplayHeight = overlayH - 8;
 
-	HWND hwndSpinX2 = GetDlgItem(mhwnd, IDC_X2_SPIN);
-	HWND hwndSpinY2 = GetDlgItem(mhwnd, IDC_Y2_SPIN);
+	HWND hwndSpinX2 = GetDlgItem(mhwnd, kIDC_X2_SPIN);
+	HWND hwndSpinY2 = GetDlgItem(mhwnd, kIDC_Y2_SPIN);
 	RECT r;
 
 	GetWindowRect(hwndSpinX2, &r);
@@ -867,11 +879,11 @@ void VDClippingControl::OnSize(int w, int h) {
 	GetWindowRect(hwndSpinY2, &r);
 	int spinY2Width = r.right - r.left;
 
-	SetWindowPos(GetDlgItem(mhwnd, IDC_X2_STATIC),	NULL, w - (48*duX)/4, (2*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
-	SetWindowPos(GetDlgItem(mhwnd, IDC_X2_EDIT  ),	NULL, w - (24*duX)/4, (0*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
+	SetWindowPos(GetDlgItem(mhwnd, kIDC_X2_STATIC),	NULL, w - (48*duX)/4, (2*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
+	SetWindowPos(GetDlgItem(mhwnd, kIDC_X2_EDIT  ),	NULL, w - (24*duX)/4, (0*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
 	SetWindowPos(hwndSpinX2,						NULL, w - ( 2*duX)/4 - spinX2Width, (0*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
-	SetWindowPos(GetDlgItem(mhwnd, IDC_Y2_STATIC),	NULL, ( 0*duX)/4, h - ( 9*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
-	SetWindowPos(GetDlgItem(mhwnd, IDC_Y2_EDIT  ),	NULL, (24*duX)/4, h - (10*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
+	SetWindowPos(GetDlgItem(mhwnd, kIDC_Y2_STATIC),	NULL, ( 0*duX)/4, h - ( 9*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
+	SetWindowPos(GetDlgItem(mhwnd, kIDC_Y2_EDIT  ),	NULL, (24*duX)/4, h - (10*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
 	SetWindowPos(hwndSpinY2,						NULL, (48*duX)/4 - spinY2Width, h - (10*duY)/8, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
 
 	pOverlay->SetImageRect(4, 4, mDisplayWidth, mDisplayHeight);

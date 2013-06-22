@@ -870,13 +870,13 @@ public:
 			SetValue(200, mTimingSetup.mSyncMode);
 
 			int v = mTimingSetup.mInsertLimit;
-			SetCaption(300, VDswprintf(L"%d", 1, &v));
+			SetCaption(300, VDswprintf(L"%d", 1, &v).c_str());
 
 			v = mTimingSetup.mAutoAudioLatencyLimit;
-			SetCaption(301, VDswprintf(L"%d", 1, &v));
+			SetCaption(301, VDswprintf(L"%d", 1, &v).c_str());
 
 			v = mTimingSetup.mAudioLatency;
-			SetCaption(302, VDswprintf(L"%d", 1, &v));
+			SetCaption(302, VDswprintf(L"%d", 1, &v).c_str());
 
 			pBase->ExecuteAllLinks();
 		} else if (type == kEventSelect) {

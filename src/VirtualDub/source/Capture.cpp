@@ -687,6 +687,7 @@ protected:
 	uint32		mFilterPalette[256];
 
 	VDAtomicInt	mRefCount;
+	VDCaptureTimingAccuracyBooster mTimingAccuracyBooster;
 };
 
 IVDCaptureProject *VDCreateCaptureProject() { return new VDCaptureProject; }
@@ -1953,34 +1954,30 @@ unknown_PCM_format:
 		if (mpCB)
 			mpCB->UICaptureStart(fTest);
 
-		{
-			VDCaptureTimingAccuracyBooster timingBooster;
+		if (!mpDriver->CaptureStart()) {
+			icd.mpError = new_nothrow MyError("Unable to start video capture.");
+		} else {
+			VDSamplingAutoProfileScope autoVTProfile;
 
-			if (!mpDriver->CaptureStart()) {
-				icd.mpError = new_nothrow MyError("Unable to start video capture.");
-			} else {
-				VDSamplingAutoProfileScope autoVTProfile;
+			MSG msg;
 
-				MSG msg;
+			for(;;) {
+				BOOL result = GetMessage(&msg, NULL, 0, 0);
 
-				for(;;) {
-					BOOL result = GetMessage(&msg, NULL, 0, 0);
+				if (result == (BOOL)-1)
+					break;
 
-					if (result == (BOOL)-1)
-						break;
+				if (!result) {
+					PostQuitMessage(msg.wParam);
+					break;
+				}
 
-					if (!result) {
-						PostQuitMessage(msg.wParam);
-						break;
-					}
+				if (!msg.hwnd && msg.message == WM_APP+100)
+					break;
 
-					if (!msg.hwnd && msg.message == WM_APP+100)
-						break;
-
-					if (!guiCheckDialogs(&msg) && !VDUIFrame::TranslateAcceleratorMessage(msg)) {
-						TranslateMessage(&msg);
-						DispatchMessage(&msg);
-					}
+				if (!guiCheckDialogs(&msg) && !VDUIFrame::TranslateAcceleratorMessage(msg)) {
+					TranslateMessage(&msg);
+					DispatchMessage(&msg);
 				}
 			}
 		}

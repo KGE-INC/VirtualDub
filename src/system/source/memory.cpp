@@ -211,6 +211,26 @@ void VDMemset32(void *dst, uint32 value, size_t count) {
 	}
 }
 
+void VDMemset128(void *dst, const void *src0, size_t count) {
+	if (count) {
+		const uint32 *src = (const uint32 *)src0;
+		uint32 a0 = src[0];
+		uint32 a1 = src[1];
+		uint32 a2 = src[2];
+		uint32 a3 = src[3];
+
+		uint32 *dst2 = (uint32 *)dst;
+
+		do {
+			dst2[0] = a0;
+			dst2[1] = a1;
+			dst2[2] = a2;
+			dst2[3] = a3;
+			dst2 += 4;
+		} while(--count);
+	}
+}
+
 void VDMemset8Rect(void *dst, ptrdiff_t pitch, uint8 value, size_t w, size_t h) {
 	if (w>0 && h>0) {
 		do {

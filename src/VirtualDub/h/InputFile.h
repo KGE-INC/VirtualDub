@@ -39,7 +39,7 @@ class VDStringA;
 class InputFileOptions {
 public:
 	virtual ~InputFileOptions()=0;
-	virtual bool read(const char *buf)=0;
+//	virtual bool read(const char *buf)=0;
 	virtual int write(char *buf, int buflen)=0;
 };
 
@@ -64,9 +64,8 @@ public:
 	virtual bool Append(const wchar_t *szFile);
 
 	virtual void setOptions(InputFileOptions *);
-	virtual void setAutomated(bool);
 	virtual InputFileOptions *promptForOptions(HWND);
-	virtual InputFileOptions *createOptions(const char *buf);
+	virtual InputFileOptions *createOptions(const void *buf, uint32 len);
 	virtual void InfoDialog(HWND hwndParent);
 
 	typedef std::list<std::pair<uint32, VDStringA> > tFileTextInfo;

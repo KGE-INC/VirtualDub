@@ -124,6 +124,8 @@ public:
 	DubPerfOptions perf;
 
 	bool	fShowStatus, fMoveSlider;
+
+	uint32	mThrottlePercent;
 };
 
 class DubStreamInfo {
@@ -187,6 +189,8 @@ public:
 	virtual void SetStatusHandler(IDubStatusHandler *pdsh)		=0;
 	virtual void SetPriority(int index)=0;
 	virtual void UpdateFrames()=0;
+
+	virtual void SetThrottleFactor(float throttleFactor) = 0;
 };
 
 IDubber *CreateDubber(DubOptions *xopt);

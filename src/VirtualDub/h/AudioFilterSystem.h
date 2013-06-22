@@ -11,7 +11,9 @@
 #include <vd2/plugin/vdaudiofilt.h>
 #include "plugins.h"
 
-struct VDPluginInfo;
+struct VDXPluginInfo;
+typedef VDXPluginInfo VDPluginInfo;
+
 struct VDPluginDescription;
 struct VDAudioFilterDefinition;
 class VDAudioFilterInstance;

@@ -130,7 +130,7 @@ extern const struct VDAudioFilterDefinition afilterDef_centermix = {
 };
 
 
-extern const struct VDPluginInfo apluginDef_centermix = {
+extern const VDPluginInfo apluginDef_centermix = {
 	sizeof(VDPluginInfo),
 	L"center mix",
 	NULL,

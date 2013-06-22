@@ -229,13 +229,13 @@ bool VDCaptureDriverEmulation::Init(VDGUIHandle hParent) {
 
 	SetWindowLongPtr(mhwndMessages, 0, (LONG_PTR)this);
 
-	mhwnd = CreateWindowEx(0, VIDEODISPLAYCONTROLCLASS, "", WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS, 0, 0, 64, 64, mhwndParent, (HMENU)0, g_hInst, NULL);
+	mhwnd = (HWND)VDCreateDisplayWindowW32(0, WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS, 0, 0, 64, 64, (VDGUIHandle)mhwndParent);
 	if (!mhwnd) {
 		DestroyWindow(mhwndMessages);
 		return false;
 	}
 
-	mpDisplay = VDGetIVideoDisplay(mhwnd);
+	mpDisplay = VDGetIVideoDisplay((VDGUIHandle)mhwnd);
 	mPreviewFrameCount = 0;
 
 	VDRegistryAppKey key("Capture");
@@ -257,11 +257,9 @@ bool VDCaptureDriverEmulation::Init(VDGUIHandle hParent) {
 void VDCaptureDriverEmulation::Shutdown() {
 	CloseInputFile();
 
-	mpDisplay = NULL;
-
-	if (mhwnd) {
-		DestroyWindow(mhwnd);
-		mhwnd = NULL;
+	if (mpDisplay) {
+		mpDisplay->Destroy();
+		mpDisplay = NULL;
 	}
 
 	if (mhwndMessages) {
@@ -702,7 +700,7 @@ void VDCaptureDriverEmulation::OnTick() {
 		}
 
 		if (m == kDisplayHardware || m == kDisplaySoftware)
-			mpDisplay->PostUpdate();
+			mpDisplay->Update();
 	}
 }
 

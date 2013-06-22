@@ -61,6 +61,8 @@ public:
 
 	VDSignal *GetBlitterSignal();
 
+	void SetThrottle(float f);
+
 protected:
 	enum VideoWriteResult {
 		kVideoWriteOK,							// Frame was processed and written
@@ -73,7 +75,7 @@ protected:
 
 	void NextSegment();
 
-	VideoWriteResult WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, VDPosition sampleFrame, VDPosition displayFrame, VDPosition timelineFrame, int srcIndex);
+	VideoWriteResult WriteVideoFrame(void *buffer, int exdata, int droptype, LONG lastSize, VDPosition sampleFrame, VDPosition targetFrame, VDPosition displayFrame, VDPosition timelineFrame, int srcIndex);
 	void WritePendingEmptyVideoFrame();
 	void WriteAudio(void *buffer, long lActualBytes, long lActualSamples);
 
@@ -86,6 +88,7 @@ protected:
 	const DubOptions		*opt;
 
 	VDStreamInterleaver		*mpInterleaver;
+	VDLoopThrottle			mLoopThrottle;
 
 	// OUTPUT
 	IVDMediaOutput			*mpAVIOut;

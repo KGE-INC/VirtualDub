@@ -229,7 +229,7 @@ extern const struct VDAudioFilterDefinition afilterDef_input = {
 	&VDAudioFilterBase::sVtbl,
 };
 
-extern const struct VDPluginInfo apluginDef_input = {
+extern const VDPluginInfo apluginDef_input = {
 	sizeof(VDPluginInfo),
 	L"input",
 	NULL,
@@ -326,7 +326,7 @@ extern const struct VDAudioFilterDefinition afilterDef_playback = {
 	&VDAudioFilterBase::sVtbl,
 };
 
-extern const struct VDPluginInfo apluginDef_playback = {
+extern const VDPluginInfo apluginDef_playback = {
 	sizeof(VDPluginInfo),
 	L"*playback",
 	NULL,
@@ -425,7 +425,7 @@ extern const struct VDAudioFilterDefinition afilterDef_butterfly = {
 	&VDAudioFilterBase::sVtbl,
 };
 
-extern const struct VDPluginInfo apluginDef_butterfly = {
+extern const VDPluginInfo apluginDef_butterfly = {
 	sizeof(VDPluginInfo),
 	L"butterfly",
 	NULL,
@@ -545,7 +545,7 @@ extern const struct VDAudioFilterDefinition afilterDef_stereosplit = {
 	&VDAudioFilterBase::sVtbl,
 };
 
-extern const struct VDPluginInfo apluginDef_stereosplit = {
+extern const VDPluginInfo apluginDef_stereosplit = {
 	sizeof(VDPluginInfo),
 	L"stereo split",
 	NULL,
@@ -684,7 +684,7 @@ extern const struct VDAudioFilterDefinition afilterDef_stereomerge = {
 	&VDAudioFilterBase::sVtbl,
 };
 
-extern const struct VDPluginInfo apluginDef_stereomerge = {
+extern const VDPluginInfo apluginDef_stereomerge = {
 	sizeof(VDPluginInfo),
 	L"stereo merge",
 	NULL,

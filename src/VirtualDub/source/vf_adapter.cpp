@@ -941,7 +941,7 @@ extern const struct VDVideoFilterDefinition vfilterDef_adapter = {
 	VDVideoFilterAdapter::MainProc,
 };
 
-extern const struct VDPluginInfo vpluginDef_adapter = {
+extern const VDPluginInfo vpluginDef_adapter = {
 	sizeof(VDPluginInfo),
 	L"adapter",
 	NULL,

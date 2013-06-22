@@ -70,7 +70,7 @@ extern "C" {
 
 		} __except(EXCEPTION_EXECUTE_HANDLER) {
 			if (_exception_code() == STATUS_ILLEGAL_INSTRUCTION)
-				g_lCPUExtensionsAvailable &= ~(CPUF_SUPPORTS_SSE|CPUF_SUPPORTS_SSE2);
+				g_lCPUExtensionsAvailable &= ~(CPUF_SUPPORTS_SSE|CPUF_SUPPORTS_SSE2|CPUF_SUPPORTS_SSE3|CPUF_SUPPORTS_SSSE3);
 		}
 
 		return g_lCPUExtensionsAvailable;
@@ -111,21 +111,31 @@ extern "C" {
 			mov		eax,1
 			cpuid
 			mov		ebx,edx
-			and		ebx,00800000h	;MMX is bit 23
+			and		ebx,00800000h	;MMX is bit 23 of EDX
 			shr		ebx,21
 			or		ebp,ebx			;set bit 2 if MMX exists
 
 			mov		ebx,edx
-			and		edx,02000000h	;SSE is bit 25
+			and		edx,02000000h	;SSE is bit 25 of EDX
 			shr		edx,25
 			neg		edx
 			and		edx,00000018h	;set bits 3 and 4 if SSE exists
 			or		ebp,edx
 
-			and		ebx,04000000h	;SSE2 is bit 26
+			and		ebx,04000000h	;SSE2 is bit 26 of EDX
 			shr		ebx,21
 			and		ebx,00000020h	;set bit 5
 			or		ebp,ebx
+
+			test	ecx, 1			;SSE3 is bit 0 of ECX
+			jz		no_sse3
+			or		ebp, 100h
+no_sse3:
+
+			test	ecx, 200h		;SSSE3 is bit 9 of ECX
+			jz		no_ssse3
+			or		ebp, 200h
+no_ssse3:
 
 			;check for vendor feature register (K6/Athlon).
 

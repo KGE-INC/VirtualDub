@@ -90,6 +90,7 @@
 				MapFileName="$(TargetDir)$(TargetName).map"
 				SubSystem="2"
 				TargetMachine="1"
+				FixedBaseAddress="1"
 			/>
 			<Tool
 				Name="VCALinkTool"
@@ -1208,11 +1209,11 @@
 				>
 			</File>
 			<File
-				RelativePath="res\resource.h"
+				RelativePath="..\Riza\res\resource.h"
 				>
 			</File>
 			<File
-				RelativePath="..\Riza\res\resource.h"
+				RelativePath="res\resource.h"
 				>
 			</File>
 			<File
@@ -6189,6 +6190,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\source\InputFilePlugin.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\source\InputFileTest.cpp"
 				>
 			</File>
@@ -6304,6 +6309,10 @@
 			</File>
 			<File
 				RelativePath=".\h\AVIOutputFLM.h"
+				>
+			</File>
+			<File
+				RelativePath=".\h\AVIOutputGIF.h"
 				>
 			</File>
 			<File
@@ -9041,6 +9050,10 @@
 				>
 				<File
 					RelativePath="..\h\vd2\plugin\vdaudiofilt.h"
+					>
+				</File>
+				<File
+					RelativePath="..\h\vd2\plugin\vdinputdriver.h"
 					>
 				</File>
 				<File

@@ -55,7 +55,7 @@ public:
 	bool isStreaming();
 
 	void setOptions(InputFileOptions *_ifo);
-	InputFileOptions *createOptions(const char *buf);
+	InputFileOptions *createOptions(const void *buf, uint32 len);
 	InputFileOptions *promptForOptions(HWND hwnd);
 	void EnableSegmentAutoscan();
 	void ForceCompatibility();

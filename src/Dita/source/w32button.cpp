@@ -45,7 +45,12 @@ void VDUIButtonW32::PreLayoutBase(const VDUILayoutSpecs& parentConstraints) {
 	SIZE siz = SizeText(parentConstraints.minsize.w, pad.w, pad.h);
 
 	mLayoutSpecs.minsize.w	= pad.w + siz.cx;
-	mLayoutSpecs.minsize.h	= pad.h;
+
+	// hack for non-command buttons
+	if ((mAlignY & nsVDUI::kAlignTypeMask) == nsVDUI::kFill)
+		mLayoutSpecs.minsize.h	= 0;
+	else
+		mLayoutSpecs.minsize.h	= pad.h;
 }
 
 void VDUIButtonW32::OnCommandCallback(UINT code) {

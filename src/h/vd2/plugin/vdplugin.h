@@ -1,3 +1,28 @@
+//	VirtualDub - Video processing and capture application
+//	Plugin headers
+//	Copyright (C) 1998-2007 Avery Lee, All Rights Reserved.
+//
+//	The plugin headers in the VirtualDub plugin SDK are licensed differently
+//	differently than VirtualDub and the Plugin SDK themselves.  This
+//	particular file is thus licensed as follows (the "zlib" license):
+//
+//	This software is provided 'as-is', without any express or implied
+//	warranty.  In no event will the authors be held liable for any
+//	damages arising from the use of this software.
+//
+//	Permission is granted to anyone to use this software for any purpose,
+//	including commercial applications, and to alter it and redistribute it
+//	freely, subject to the following restrictions:
+//
+//	1.	The origin of this software must not be misrepresented; you must
+//		not claim that you wrote the original software. If you use this
+//		software in a product, an acknowledgment in the product
+//		documentation would be appreciated but is not required.
+//	2.	Altered source versions must be plainly marked as such, and must
+//		not be misrepresented as being the original software.
+//	3.	This notice may not be removed or altered from any source
+//		distribution.
+
 #ifndef f_VD2_PLUGIN_VDPLUGIN_H
 #define f_VD2_PLUGIN_VDPLUGIN_H
 
@@ -25,13 +50,25 @@
 	typedef sint8				int8;
 #endif
 
-#ifndef VDAPIENTRY
-	#define VDAPIENTRY __cdecl
+#ifndef VDXAPIENTRY
+	#define VDXAPIENTRY __stdcall
 #endif
 
-#ifndef VDAPIENTRYV
-	#define VDAPIENTRYV __cdecl
+#ifndef VDXAPIENTRYV
+	#define VDXAPIENTRYV __cdecl
 #endif
+
+enum VDXCPUFeatureFlags {
+	kVDXCPUF_CPUID		= 0x00000001,
+	kVDXCPUF_MMX		= 0x00000004,
+	kVDXCPUF_ISSE		= 0x00000008,
+	kVDXCPUF_SSE		= 0x00000010,
+	kVDXCPUF_SSE2		= 0x00000020,
+	kVDXCPUF_3DNOW		= 0x00000040,
+	kVDXCPUF_3DNOW_EXT	= 0x00000080,
+	kVDXCPUF_SSE3		= 0x00000100,
+	kVDXCPUF_SSSE3		= 0x00000200
+};
 
 enum {
 	kVDPlugin_APIVersion		= 10
@@ -41,9 +78,10 @@ enum {
 enum {
 	kVDPluginType_Video,		// Updated video filter API is not yet complete.
 	kVDPluginType_Audio,
+	kVDPluginType_Input
 };
 
-struct VDPluginInfo {
+struct VDXPluginInfo {
 	uint32			mSize;				// size of this structure in bytes
 	const wchar_t	*mpName;
 	const wchar_t	*mpAuthor;
@@ -58,14 +96,20 @@ struct VDPluginInfo {
 	const void *	mpTypeSpecificInfo;
 };
 
-typedef const VDPluginInfo **(*tpVDGetPluginInfo)();
+typedef const VDXPluginInfo *const *(VDXAPIENTRY *tpVDXGetPluginInfo)();
 
-class IVDPluginCallbacks {
+typedef VDXPluginInfo VDPluginInfo;
+typedef tpVDXGetPluginInfo tpVDPluginInfo;
+
+class IVDXPluginCallbacks {
 public:
-	virtual void * VDAPIENTRY GetExtendedAPI(const char *pExtendedAPIName) = 0;
-	virtual void VDAPIENTRYV SetError(const char *format, ...) = 0;
-	virtual void VDAPIENTRY SetErrorOutOfMemory() = 0;
+	virtual void * VDXAPIENTRY GetExtendedAPI(const char *pExtendedAPIName) = 0;
+	virtual void VDXAPIENTRYV SetError(const char *format, ...) = 0;
+	virtual void VDXAPIENTRY SetErrorOutOfMemory() = 0;
+	virtual uint32 VDXAPIENTRY GetCPUFeatureFlags() = 0;
 };
+
+typedef IVDXPluginCallbacks IVDPluginCallbacks;
 
 struct VDPluginConfigEntry {
 	enum Type {
@@ -88,6 +132,5 @@ struct VDPluginConfigEntry {
 	const wchar_t *label;
 	const wchar_t *desc;	
 };
-
 
 #endif

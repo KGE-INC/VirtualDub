@@ -53,7 +53,7 @@ public:
 	virtual void		streamSetDesiredFrame(VDPosition frame_num) = 0;
 	virtual VDPosition	streamGetNextRequiredFrame(bool& is_preroll) = 0;
 	virtual int			streamGetRequiredCount(uint32 *totalsize) = 0;
-	virtual const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num) = 0;
+	virtual const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition sample_num, VDPosition target_sample) = 0;
 	virtual uint32		streamGetDecodePadding() = 0;
 
 	virtual void		streamBegin(bool fRealTime, bool bForceReset) = 0;
@@ -255,7 +255,7 @@ public:
 	bool isStreaming();
 
 	void streamBegin(bool fRealTime, bool bForceReset);
-	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num);
+	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition sample_num, VDPosition target_sample);
 	void streamEnd();
 
 	// I really hate doing this, but an awful lot of codecs are sloppy about their

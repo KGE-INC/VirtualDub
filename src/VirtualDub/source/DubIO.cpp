@@ -58,6 +58,10 @@ VDDubIOThread::VDDubIOThread(
 VDDubIOThread::~VDDubIOThread() {
 }
 
+void VDDubIOThread::SetThrottle(float f) {
+	mLoopThrottle.SetThrottleFactor(f);
+}
+
 void VDDubIOThread::ThreadRun() {
 	VDRTProfileChannel profchan("I/O");
 
@@ -74,6 +78,9 @@ void VDDubIOThread::ThreadRun() {
 			bool bBlocked = true;
 
 			++mThreadCounter;
+
+			if (!mLoopThrottle.Delay())
+				continue;
 
 			bool bCanWriteVideo = bVideoActive && !mpVideoPipe->full();
 			bool bCanWriteAudio = bAudioActive && !mpAudioPipe->full();
@@ -159,7 +166,7 @@ void VDDubIOThread::ThreadRun() {
 	}
 }
 
-void VDDubIOThread::ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDPosition display_frame, VDPosition timeline_frame, bool preload, bool direct, bool sameAsLast) {
+void VDDubIOThread::ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDPosition target_frame, VDPosition display_frame, VDPosition timeline_frame, bool preload, bool direct, bool sameAsLast) {
 	int hr;
 
 	void *buffer;
@@ -170,6 +177,7 @@ void VDDubIOThread::ReadVideoFrame(int sourceIndex, VDPosition stream_frame, VDP
 	VDRenderVideoPipeFrameInfo frameInfo;
 	frameInfo.mLength			= 0;
 	frameInfo.mRawFrame			= stream_frame;
+	frameInfo.mTimelineFrame	= target_frame,
 	frameInfo.mDisplayFrame		= display_frame;
 	frameInfo.mTimelineFrame	= timeline_frame;
 	frameInfo.mSrcIndex			= sourceIndex;
@@ -279,7 +287,7 @@ bool VDDubIOThread::MainAddVideoFrame() {
 	if (step.mSourceFrame < 0)
 		ReadNullVideoFrame(step.mSrcIndex, step.mDisplayFrame, step.mTimelineFrame, step.mbDirect, step.mbSameAsLast);
 	else
-		ReadVideoFrame(step.mSrcIndex, step.mSourceFrame, step.mDisplayFrame, step.mTimelineFrame, step.mbIsPreroll, step.mbDirect, step.mbSameAsLast);
+		ReadVideoFrame(step.mSrcIndex, step.mSourceFrame, step.mTargetSample, step.mDisplayFrame, step.mTimelineFrame, step.mbIsPreroll, step.mbDirect, step.mbSameAsLast);
 
 	if (!step.mbIsPreroll)
 		++vInfo.cur_dst;

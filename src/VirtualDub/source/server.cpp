@@ -609,6 +609,7 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM original_frame) {
 
 		vSrc->streamSetDesiredFrame(sample);
 
+		VDPosition targetSample = vSrc->displayToStreamOrder(sample);
 		VDPosition frame = vSrc->streamGetNextRequiredFrame(is_preroll);
 
 		if (frame >= 0) {
@@ -630,17 +631,15 @@ LRESULT Frameserver::SessionFrame(LPARAM lParam, WPARAM original_frame) {
 				if (hr)
 					return VDSRVERR_FAILED;
 
-				ptr = vSrc->streamGetFrame(&mInputBuffer[0], lSize, is_preroll, frame);
+				ptr = vSrc->streamGetFrame(&mInputBuffer[0], lSize, is_preroll, frame, targetSample);
 			} while(-1 != (frame = vSrc->streamGetNextRequiredFrame(is_preroll)));
 
 		} else
-			ptr = vSrc->streamGetFrame(NULL, 0, FALSE, vSrc->displayToStreamOrder(sample));
+			ptr = vSrc->streamGetFrame(NULL, 0, FALSE, targetSample, targetSample);
 
 		VDPixmap pxdst(VDPixmapFromLayout(mFrameLayout, fs->arena));
 
 		if (!g_listFA.IsEmpty()) {
-			VBitmap srcbm((void *)vSrc->getFrameBuffer(), vSrc->getDecompressedFormat());
-
 			VDPixmapBlt(VDAsPixmap(*filters.InputBitmap()), vSrc->getTargetFormat());
 
 			fsi.lCurrentFrame				= original_frame;

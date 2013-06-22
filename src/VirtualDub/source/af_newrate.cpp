@@ -176,7 +176,7 @@ extern const struct VDAudioFilterDefinition afilterDef_newrate = {
 	&VDAudioFilterBase::sVtbl,
 };
 
-extern const struct VDPluginInfo apluginDef_newrate = {
+extern const VDPluginInfo apluginDef_newrate = {
 	sizeof(VDPluginInfo),
 	L"new rate",
 	NULL,

@@ -26,6 +26,7 @@
 #ifndef f_VD2_SYSTEM_ATOMIC_H
 #define f_VD2_SYSTEM_ATOMIC_H
 
+#include <vd2/system/vdtypes.h>
 
 // Intrinsics available in VC6.0
 extern "C" long __cdecl _InterlockedDecrement(volatile long *p);
@@ -65,7 +66,7 @@ inline void *VDAtomicCompareExchangePointer(void *volatile *pp, void *p, void *c
 #ifdef _M_AMD64
 	return _InterlockedCompareExchangePointer(pp, p, compare);
 #else
-	return (void *)_InterlockedCompareExchange((volatile long *)pp, (long)p, (long)compare);
+	return (void *)(sintptr)_InterlockedCompareExchange((volatile long *)(volatile sintptr *)pp, (long)(sintptr)p, (long)(sintptr)compare);
 #endif
 }
 

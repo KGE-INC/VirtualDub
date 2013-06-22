@@ -139,6 +139,7 @@ protected:
 
 struct VDRenderFrameStep {
 	VDPosition	mSourceFrame;
+	VDPosition	mTargetSample;
 	VDPosition	mDisplayFrame;
 	VDPosition	mTimelineFrame;
 	bool		mbIsPreroll;
@@ -165,6 +166,7 @@ protected:
 	int			mLastSrcIndex;
 	VDPosition	mSrcTimelineFrame;
 	VDPosition	mSrcDisplayFrame;
+	VDPosition	mSrcTargetSample;
 	VDPosition	mLastSrcDisplayFrame;
 	VDPosition	mDstFrame;
 	VDPosition	mDstFrameQueueNext;
@@ -257,6 +259,40 @@ protected:
 	VDSignal			msigWrite;
 	volatile bool		mbInputClosed;
 	volatile bool		mbOutputClosed;
+};
+
+///////////////////////////////////////////////////////////////////////////
+//
+//	VDLoopThrottle
+//
+///////////////////////////////////////////////////////////////////////////
+
+class VDLoopThrottle {
+public:
+	VDLoopThrottle();
+	~VDLoopThrottle();
+
+	void SetThrottleFactor(float factor) {
+		mThrottleFactor = factor;
+	}
+
+	bool Delay();
+
+	void BeginWait();
+	void EndWait();
+
+protected:
+	VDAtomicFloat	mThrottleFactor;
+	int		mWaitDepth;
+	float	mWaitTime;
+	uint32	mLastTime;
+	bool	mbLastTimeValid;
+
+	int		mWindowIndex;
+	uint32	mWaitTimeWindow[16];
+	uint32	mActiveTimeWindow[16];
+	uint32	mWaitTimeWindowSum;
+	uint32	mActiveTimeWindowSum;
 };
 
 #endif

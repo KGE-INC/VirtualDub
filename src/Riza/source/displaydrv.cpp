@@ -623,9 +623,11 @@ public:
 	bool ModifySource(const VDVideoDisplaySourceInfo& info);
 
 	bool IsValid() { return mbValid; }
+	bool IsFramePending() { return false; }
 	void SetFilterMode(FilterMode mode);
 
 	bool Tick(int id) { return true; }
+	void Poll() {}
 	bool Resize();
 	bool Update(UpdateMode);
 	void Refresh(UpdateMode);
@@ -653,6 +655,7 @@ protected:
 	VDVideoDisplayGLTable	*mpgl;
 	HGLRC		mhglrc;
 	bool		mbValid;
+	bool		mbFirstPresent;
 	bool		mbVerticalFlip;
 
 	FilterMode	mPreferredFilter;
@@ -671,6 +674,7 @@ VDVideoDisplayMinidriverOpenGL::VDVideoDisplayMinidriverOpenGL()
 	, mpgl(0)
 	, mhglrc(0)
 	, mbValid(false)
+	, mbFirstPresent(false)
 	, mPreferredFilter(kFilterAnySuitable)
 {
 	memset(&mSource, 0, sizeof mSource);
@@ -709,6 +713,7 @@ bool VDVideoDisplayMinidriverOpenGL::Init(HWND hwnd, const VDVideoDisplaySourceI
 		if (mhwndOGL) {
 			if (SendMessage(mhwndOGL, MYWM_OGLINIT, 0, 0)) {
 				mbValid = false;
+				mbFirstPresent = true;
 				return true;
 			}
 
@@ -1171,6 +1176,13 @@ void VDVideoDisplayMinidriverOpenGL::OnPaint() {
 
 		SwapBuffers(hdc);
 
+		// Workaround for Windows Vista DWM composition chain not updating.
+		if (mbFirstPresent) {
+			SetWindowPos(mhwndOGL, NULL, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE|SWP_NOZORDER|SWP_FRAMECHANGED);
+			SetWindowPos(mhwnd, NULL, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE|SWP_NOZORDER|SWP_FRAMECHANGED);
+			mbFirstPresent = false;
+		}
+
 //		mpgl->pwglMakeCurrent(NULL, NULL);
 	}
 
@@ -1431,9 +1443,11 @@ public:
 	bool ModifySource(const VDVideoDisplaySourceInfo& info);
 
 	bool IsValid();
+	bool IsFramePending() { return false; }
 	void SetFilterMode(FilterMode mode) {}
 
 	bool Tick(int id);
+	void Poll() {}
 	bool Resize();
 	bool Update(UpdateMode);
 	void Refresh(UpdateMode);
@@ -2022,19 +2036,6 @@ bool VDVideoDisplayMinidriverDirectDraw::Update(UpdateMode mode) {
 
 	uint32 fieldmode = mode & kModeFieldMask;
 
-	if (mSource.bInterlaced && fieldmode != kModeAllFields) {
-		if (fieldmode == kModeOddField) {
-			source.data = (char *)source.data + source.pitch;
-			source.h >>= 1;
-			dst += dstpitch;
-		} else {
-			source.h = (source.h + 1) >> 1;
-		}
-
-		source.pitch += source.pitch;
-		dstpitch += dstpitch;
-	}
-
 	VDPixmap dstbm = { dst, NULL, ddsd.dwWidth, ddsd.dwHeight, dstpitch, mPrimaryFormat };
 
 	if (mpddsOverlay)
@@ -2063,7 +2064,58 @@ bool VDVideoDisplayMinidriverDirectDraw::Update(UpdateMode mode) {
 		}
 	}
 
-	if (dstbm.format == nsVDPixmap::kPixFormat_Pal8 && dstbm.format != source.format)
+	if (mSource.bInterlaced && fieldmode != kModeAllFields) {
+		const VDPixmapFormatInfo& srcformat = VDPixmapGetInfo(source.format);
+		const VDPixmapFormatInfo& dstformat = VDPixmapGetInfo(dstbm.format);
+
+		if (!srcformat.qhbits && !dstformat.qhbits && !srcformat.auxhbits && !dstformat.auxhbits) {
+			if (fieldmode == kModeOddField) {
+				source.h >>= 1;
+
+				vdptrstep(source.data, source.pitch);
+				switch(srcformat.auxbufs) {
+					case 2:	vdptrstep(source.data3, source.pitch3);
+					case 1:	vdptrstep(source.data2, source.pitch2);
+				}
+
+				dstbm.h >>= 1;
+				vdptrstep(dstbm.data, dstbm.pitch);
+				switch(dstformat.auxbufs) {
+					case 2:	vdptrstep(dstbm.data3, dstbm.pitch3);
+					case 1:	vdptrstep(dstbm.data2, dstbm.pitch2);
+				}
+			} else {
+				source.h = (source.h + 1) >> 1;
+				dstbm.h = (dstbm.h + 1) >> 1;
+			}
+
+			source.pitch += source.pitch;
+			switch(dstformat.auxbufs) {
+				case 2:	source.pitch3 += source.pitch3;
+				case 1:	source.pitch2 += source.pitch2;
+			}
+
+			dstbm.pitch += dstbm.pitch;
+			switch(dstformat.auxbufs) {
+				case 2:	dstbm.pitch3 += dstbm.pitch3;
+				case 1:	dstbm.pitch2 += dstbm.pitch2;
+			}
+		}
+	}
+
+	bool dither = false;
+	if (dstbm.format == nsVDPixmap::kPixFormat_Pal8 && dstbm.format != source.format) {
+		switch(source.format) {
+			case nsVDPixmap::kPixFormat_XRGB1555:
+			case nsVDPixmap::kPixFormat_RGB565:
+			case nsVDPixmap::kPixFormat_RGB888:
+			case nsVDPixmap::kPixFormat_XRGB8888:
+				dither = true;
+				break;
+		}
+	}
+
+	if (dither)
 		VDDitherImage(dstbm, source, mpLogicalPalette);
 	else
 		VDPixmapBlt(dstbm, source);
@@ -2275,9 +2327,11 @@ public:
 	bool ModifySource(const VDVideoDisplaySourceInfo& info);
 
 	bool IsValid() { return mbValid; }
+	bool IsFramePending() { return false; }
 	void SetFilterMode(FilterMode mode) {}
 
 	bool Tick(int id) { return true; }
+	void Poll() {}
 	bool Resize() { return true; }
 	bool Update(UpdateMode);
 	void Refresh(UpdateMode);

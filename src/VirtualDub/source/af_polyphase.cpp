@@ -519,7 +519,7 @@ extern const struct VDAudioFilterDefinition afilterDef_lowpass = {
 	&VDAudioFilterBase::sVtbl,
 };
 
-extern const struct VDPluginInfo apluginDef_lowpass = {
+extern const VDPluginInfo apluginDef_lowpass = {
 	sizeof(VDPluginInfo),
 	L"lowpass",
 	NULL,
@@ -548,7 +548,7 @@ extern const struct VDAudioFilterDefinition afilterDef_highpass = {
 	&VDAudioFilterBase::sVtbl,
 };
 
-extern const struct VDPluginInfo apluginDef_highpass = {
+extern const VDPluginInfo apluginDef_highpass = {
 	sizeof(VDPluginInfo),
 	L"highpass",
 	NULL,
@@ -728,7 +728,7 @@ extern const struct VDAudioFilterDefinition afilterDef_resample = {
 	&VDAudioFilterBase::sVtbl,
 };
 
-extern const struct VDPluginInfo apluginDef_resample = {
+extern const VDPluginInfo apluginDef_resample = {
 	sizeof(VDPluginInfo),
 	L"resample",
 	NULL,
@@ -881,7 +881,7 @@ extern const struct VDAudioFilterDefinition afilterDef_stretch = {
 	&VDAudioFilterBase::sVtbl,
 };
 
-extern const struct VDPluginInfo apluginDef_stretch = {
+extern const VDPluginInfo apluginDef_stretch = {
 	sizeof(VDPluginInfo),
 	L"stretch",
 	NULL,

@@ -22,6 +22,7 @@
 #include <vd2/system/error.h>
 #include <vd2/system/cpuaccel.h>
 #include <vd2/system/w32assist.h>
+#include <vd2/system/time.h>
 #include <vector>
 
 #include "DubUtils.h"
@@ -268,6 +269,7 @@ void VDRenderFrameIterator::Init(const vdfastvector<IVDVideoSource *>& videoSour
 	mbSmart			= bSmart;
 	mDstFrame		= 0;
 	mSrcDisplayFrame	= -1;
+	mSrcTargetSample	= -1;
 	mLastSrcDisplayFrame = -1;
 	mSrcIndex = -1;
 	mLastSrcIndex = -1;
@@ -297,6 +299,7 @@ VDRenderFrameStep VDRenderFrameIterator::Next() {
 			mbFirstSourceFrame = false;
 
 			step.mSourceFrame	= f;
+			step.mTargetSample	= mSrcTargetSample;
 			step.mDisplayFrame	= mSrcDisplayFrame;
 			step.mTimelineFrame	= mSrcTimelineFrame;
 			step.mSrcIndex		= mSrcIndex;
@@ -316,6 +319,7 @@ VDRenderFrameStep VDRenderFrameIterator::Next() {
 	}
 
 	step.mSourceFrame	= -1;
+	step.mTargetSample	= mSrcTargetSample;
 	step.mSrcIndex		= mSrcIndex;
 	step.mTimelineFrame	= mSrcTimelineFrame;
 	step.mDisplayFrame	= mSrcDisplayFrame;
@@ -347,7 +351,7 @@ bool VDRenderFrameIterator::Reload() {
 	VDPosition nextDisplay = ent.mDisplayFrame;
 
 	if (mbSmart) {
-		bool isFiltered = mpFilterSystem && mpFilterSystem->IsFiltered(nextDisplay);
+		bool isFiltered = mpFilterSystem && mpFilterSystem->IsFiltered(ent.mTimelineFrame);
 
 		if (mbDirect) {
 			mpVideoSource->streamSetDesiredFrame(nextDisplay);
@@ -356,7 +360,7 @@ bool VDRenderFrameIterator::Reload() {
 				mbDirect = false;
 			}
 		} else {
-			if (!isFiltered && mpVideoSource->isKey(mpVideoSource->displayToStreamOrder(nextDisplay))) {
+			if (!isFiltered && mpVideoSource->isKey(nextDisplay)) {
 				mpVideoSource->streamRestart();
 				mbDirect = true;
 			}
@@ -373,6 +377,7 @@ bool VDRenderFrameIterator::Reload() {
 	}
 
 	mSrcDisplayFrame = nextDisplay;
+	mSrcTargetSample = mpVideoSource->displayToStreamOrder(nextDisplay);
 	++mDstFrame;
 
 	mbFirstSourceFrame = true;
@@ -423,3 +428,104 @@ void VDAudioPipeline::EndWrite(int actual) {
 	}
 }
 
+///////////////////////////////////////////////////////////////////////////
+//
+//	VDLoopThrottle
+//
+///////////////////////////////////////////////////////////////////////////
+
+VDLoopThrottle::VDLoopThrottle()
+	: mThrottleFactor(1.0f)
+	, mWaitDepth(0)
+	, mWaitTime(0)
+	, mLastTime(0)
+	, mbLastTimeValid(false)
+	, mWindowIndex(0)
+	, mWaitTimeWindowSum(0)
+	, mActiveTimeWindowSum(0)
+{
+	memset(mWaitTimeWindow, 0, sizeof mWaitTimeWindow);
+	memset(mActiveTimeWindow, 0, sizeof mActiveTimeWindow);
+}
+
+VDLoopThrottle::~VDLoopThrottle() {
+}
+
+bool VDLoopThrottle::Delay() {
+	float desiredRatio = mThrottleFactor;
+
+	if (desiredRatio >= 1.0f)
+		return true;
+
+	if (desiredRatio <= 0.0f) {
+		::Sleep(100);
+		return false;
+	}
+
+	uint32 total = mActiveTimeWindowSum + mWaitTimeWindowSum;
+
+	if (total > 0) {
+		float delta = mActiveTimeWindowSum - total * mThrottleFactor;
+
+		mWaitTime += delta * (0.1f / 16.0f);
+	}
+
+	if (mWaitTime > 0) {
+		int delayTime = VDRoundToInt(mWaitTime);
+
+		if (delayTime > 1000)
+			delayTime = 1000;
+
+		BeginWait();
+		::Sleep(delayTime);
+		EndWait();
+	}
+
+	return true;
+}
+
+void VDLoopThrottle::BeginWait() {
+	if (!mWaitDepth++) {	// transitioning active -> wait
+		uint32 currentTime = VDGetAccurateTick();
+
+		if (mbLastTimeValid) {
+			sint32 delta = currentTime - mLastTime;
+
+			// Time shouldn't ever go backwards, but clocks on Windows occasionally have
+			// the habit of doing so due to time adjustments, broken RDTSC, etc.
+			if (delta < 0)
+				delta = 0;
+
+			mActiveTimeWindowSum -= mActiveTimeWindow[mWindowIndex];
+			mActiveTimeWindow[mWindowIndex] = delta;
+			mActiveTimeWindowSum += delta;
+		}
+
+		mLastTime = currentTime;
+		mbLastTimeValid = true;
+	}
+}
+
+void VDLoopThrottle::EndWait() {
+	if (!--mWaitDepth) {	// transitioning wait -> active
+		uint32 currentTime = VDGetAccurateTick();
+
+		if (mbLastTimeValid) {
+			sint32 delta = currentTime - mLastTime;
+
+			// Time shouldn't ever go backwards, but clocks on Windows occasionally have
+			// the habit of doing so due to time adjustments, broken RDTSC, etc.
+			if (delta < 0)
+				delta = 0;
+
+			mWaitTimeWindowSum -= mWaitTimeWindow[mWindowIndex];
+			mWaitTimeWindow[mWindowIndex] = delta;
+			mWaitTimeWindowSum += delta;
+
+			mWindowIndex = (mWindowIndex + 1) & 15;
+		}
+
+		mLastTime = currentTime;
+		mbLastTimeValid = true;
+	}
+}

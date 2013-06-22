@@ -100,6 +100,7 @@ extern wchar_t g_szInputWAVFile[MAX_PATH];
 
 extern void PreviewAVI(HWND, DubOptions *, int iPriority=0, bool fProp=false);
 extern uint32& VDPreferencesGetRenderWaveBufferSize();
+extern uint32 VDPreferencesGetRenderThrottlePercent();
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -196,10 +197,12 @@ VDProject::VDProject()
 	, mposSelectionStart(0)
 	, mposSelectionEnd(0)
 	, mDesiredInputFrame(-1)
+	, mDesiredInputSample(-1)
 	, mDesiredOutputFrame(-1)
 	, mDesiredNextInputFrame(-1)
 	, mDesiredNextOutputFrame(-1)
 	, mLastDisplayedInputFrame(-1)
+	, mLastDisplayedOutputFrame(-1)
 	, mVideoInputFrameRate(0,0)
 //	, mpSchedulerThreads(NULL)
 {
@@ -505,9 +508,11 @@ void VDProject::DisplayFrame(bool bDispInput) {
 
 		bool bShowOutput = !mSceneShuttleMode && !g_dubber && g_dubOpts.video.fShowOutputFrame;
 
-		if (mLastDisplayedInputFrame != pos || !inputVideoAVI->isFrameBufferValid() || (bShowOutput && !filters.isRunning())) {
+		if (mLastDisplayedInputFrame != pos || mLastDisplayedOutputFrame != original_pos || !inputVideoAVI->isFrameBufferValid() || (bShowOutput && !filters.isRunning())) {
 			if (bDispInput)
 				mLastDisplayedInputFrame = pos;
+
+			mLastDisplayedOutputFrame = original_pos;
 
 			if (pos >= inputVideoAVI->getEnd()) {
 				if (g_dubOpts.video.fShowInputFrame && bDispInput)
@@ -534,6 +539,7 @@ void VDProject::DisplayFrame(bool bDispInput) {
 				if (replace) {
 					inputVideoAVI->streamSetDesiredFrame(pos);
 					mDesiredInputFrame	= pos;
+					mDesiredInputSample = inputVideoAVI->displayToStreamOrder(pos);
 					mDesiredOutputFrame = original_pos;
 					mDesiredNextInputFrame = -1;
 					mDesiredNextOutputFrame = -1;
@@ -584,8 +590,10 @@ bool VDProject::UpdateFrame() {
 			guiSetStatus("", 255);
 
 		mDesiredInputFrame = -1;
+		mDesiredInputSample = -1;
 		mDesiredOutputFrame = -1;
 		mDesiredNextInputFrame = -1;
+		mDesiredNextInputSample = -1;
 		mDesiredNextOutputFrame = -1;
 		return false;
 	}
@@ -622,7 +630,7 @@ bool VDProject::UpdateFrame() {
 					throw MyAVIError("Display", err);
 
 				if (samples > 0) {
-					inputVideoAVI->streamGetFrame(mVideoSampleBuffer.data(), bytes, preroll, frame);
+					inputVideoAVI->streamGetFrame(mVideoSampleBuffer.data(), bytes, preroll, frame, mDesiredInputSample);
 				}
 
 				++mFramesDecoded;
@@ -643,7 +651,7 @@ bool VDProject::UpdateFrame() {
 
 			} else {
 				if (!mFramesDecoded)
-					inputVideoAVI->streamGetFrame(NULL, 0, preroll, inputVideoAVI->displayToStreamOrder(mDesiredInputFrame));
+					inputVideoAVI->streamGetFrame(NULL, 0, preroll, mDesiredInputSample, mDesiredInputSample);
 
 				if (g_dubOpts.video.fShowInputFrame && mbUpdateInputFrame)
 					mpCB->UIRefreshInputFrame(true);
@@ -658,6 +666,7 @@ bool VDProject::UpdateFrame() {
 					guiSetStatus("", 255);
 
 				mDesiredInputFrame = mDesiredNextInputFrame;
+				mDesiredInputSample = mDesiredNextInputSample;
 				mDesiredOutputFrame = mDesiredNextOutputFrame;
 				mDesiredNextInputFrame = -1;
 				mDesiredNextOutputFrame = -1;
@@ -692,10 +701,10 @@ void VDProject::RefilterFrame(VDPosition srcPos, VDPosition dstPos) {
 	mfsi.lDestFrameMS				= (long)framerate.scale64ir(mfsi.lCurrentFrame * (sint64)1000);
 	mfsi.flags						= FilterStateInfo::kStatePreview;
 
-	BITMAPINFOHEADER *dcf = inputVideoAVI->getDecompressedFormat();
+	const VDPixmap& px = inputVideoAVI->getTargetFormat();
 
 	if (!filters.isRunning()) {
-		filters.initLinearChain(&g_listFA, (Pixel *)(dcf+1), dcf->biWidth, abs(dcf->biHeight), 0);
+		filters.initLinearChain(&g_listFA, (Pixel *)px.palette, px.w, px.h, 0);
 		if (filters.ReadyFilters(mfsi))
 			throw MyError("can't initialize filters");
 	}
@@ -714,7 +723,7 @@ void VDProject::Quit() {
 		pFrame->Destroy();
 }
 
-void VDProject::Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver, bool fExtendedOpen, bool fQuiet, bool fAutoscan, const char *pInputOpts) {
+void VDProject::Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver, bool fExtendedOpen, bool fQuiet, bool fAutoscan, const char *pInputOpts, uint32 inputOptsLen) {
 	Close();
 
 	try {
@@ -736,7 +745,7 @@ void VDProject::Open(const wchar_t *pFilename, IVDInputDriver *pSelectedDriver, 
 		if (fExtendedOpen)
 			g_pInputOpts = inputAVI->promptForOptions((HWND)mhwnd);
 		else if (pInputOpts)
-			g_pInputOpts = inputAVI->createOptions(pInputOpts);
+			g_pInputOpts = inputAVI->createOptions(pInputOpts, inputOptsLen);
 
 		if (g_pInputOpts)
 			inputAVI->setOptions(g_pInputOpts);
@@ -1085,11 +1094,12 @@ void VDProject::SaveFilmstrip(const wchar_t *pFilename) {
 	RunOperation(&out, TRUE, NULL, 0, false);
 }
 
-void VDProject::SaveAnimatedGIF(const wchar_t *pFilename) {
+void VDProject::SaveAnimatedGIF(const wchar_t *pFilename, int loopCount) {
 	if (!inputVideoAVI)
 		throw MyError("No input file to process.");
 
 	VDAVIOutputGIFSystem out(pFilename);
+	out.SetLoopCount(loopCount);
 	RunOperation(&out, TRUE, NULL, 0, false);
 }
 
@@ -1438,6 +1448,8 @@ void VDProject::RunOperation(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOn
 		VDLog(kVDLogMarker, VDswprintf(L"Beginning %ls operation.", 1, &pOpType));
 	}
 
+	DubOptions tempOpts(pOptions ? *pOptions : g_dubOpts);
+
 	try {
 		VDAutoLogDisplay disp;
 
@@ -1446,13 +1458,13 @@ void VDProject::RunOperation(IVDDubberOutputSystem *pOutputSystem, BOOL fAudioOn
 
 		// Create a dubber.
 
+		opts = &tempOpts;
 		if (!pOptions) {
-			g_dubOpts.video.fShowDecompressedFrame = g_drawDecompressedFrame;
-			g_dubOpts.fShowStatus = !!g_showStatusWindow;
+			opts->video.fShowDecompressedFrame = g_drawDecompressedFrame;
+			opts->fShowStatus = !!g_showStatusWindow;
 		}
-
-		opts = pOptions ? pOptions : &g_dubOpts;
 		opts->perf.fDropFrames = g_fDropFrames;
+		opts->mThrottlePercent = pOutputSystem->IsRealTime() ? 100 : VDPreferencesGetRenderThrottlePercent();
 
 		if (!(g_dubber = CreateDubber(opts)))
 			throw MyMemoryError();

@@ -33,6 +33,7 @@ namespace {
 		"glAlphaFunc",
 		"glBegin",
 		"glBindTexture",
+		"glBlendFunc",
 		"glCallList",
 		"glClear",
 		"glClearColor",
@@ -64,7 +65,9 @@ namespace {
 		"glTexEnvi",
 		"glTexImage2D",
 		"glTexParameteri",
+		"glTexSubImage2D",
 		"glVertex2f",
+		"glVertex2i",
 		"glViewport",
 	};
 
@@ -234,12 +237,14 @@ bool VDOpenGLBinding::Attach(HDC hdc, int minColorBits, int minAlphaBits, bool m
 
 	const char *ext = (const char *)glGetString(GL_EXTENSIONS);
 
+	ARB_multitexture = false;
 	NV_register_combiners = false;
 	NV_register_combiners2 = false;
 	NV_occlusion_query = false;
 	ATI_fragment_shader = false;
 	EXT_pixel_buffer_object = false;
 	ARB_pixel_buffer_object = false;
+	EXT_texture_env_combine = false;
 
 	if (ext) {
 		for(;;) {
@@ -256,6 +261,10 @@ bool VDOpenGLBinding::Attach(HDC hdc, int minColorBits, int minAlphaBits, bool m
 			int len = ext - start;
 
 			switch(len) {
+			case 19:
+				if (!memcmp(start, "GL_ARB_multitexture", 19))
+					ARB_multitexture = true;
+				break;
 			case 21:
 				if (!memcmp(start, "GL_NV_occlusion_query", 21))
 					NV_occlusion_query = true;
@@ -278,6 +287,10 @@ bool VDOpenGLBinding::Attach(HDC hdc, int minColorBits, int minAlphaBits, bool m
 					EXT_pixel_buffer_object = true;
 				else if (!memcmp(start, "GL_ARB_pixel_buffer_object", 26))
 					EXT_pixel_buffer_object = ARB_pixel_buffer_object = true;
+				else if (!memcmp(start, "GL_EXT_texture_env_combine", 26))
+					EXT_texture_env_combine = true;
+				else if (!memcmp(start, "GL_ARB_texture_env_combine", 26))
+					EXT_texture_env_combine = true;
 				break;
 			}
 		}

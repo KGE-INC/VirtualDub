@@ -53,6 +53,7 @@ extern "C" void asm_brightcont2_run(
 struct MyFilterData {
 	LONG bright;
 	LONG cont;
+	IFilterPreview *ifp;
 };
 
 int brightcont_run(const FilterActivation *fa, const FilterFunctions *ff) {	
@@ -117,8 +118,14 @@ static INT_PTR CALLBACK brightcontDlgProc( HWND hDlg, UINT message, WPARAM wPara
 				SendMessage(hWnd, TBM_SETPOS, (WPARAM)TRUE, mfd->cont);
 
 				SetWindowLongPtr(hDlg, DWLP_USER, (LONG)mfd);
+
+				hWnd = GetDlgItem(hDlg, IDC_PREVIEW);
+				if (mfd->ifp) {
+					EnableWindow(hWnd, TRUE);
+					mfd->ifp->InitButton(GetDlgItem(hDlg, IDC_PREVIEW));
+				}
 			}
-            return (TRUE);
+            return TRUE;
 
         case WM_COMMAND:                      
             if (LOWORD(wParam) == IDOK) {
@@ -128,18 +135,66 @@ static INT_PTR CALLBACK brightcontDlgProc( HWND hDlg, UINT message, WPARAM wPara
 				mfd->cont = SendMessage(GetDlgItem(hDlg, IDC_CONTRAST), TBM_GETPOS, 0, 0);
 
 				EndDialog(hDlg, 0);
+				SetWindowLong(hDlg, DWL_MSGRESULT, 0);
 				return TRUE;
 			} else if (LOWORD(wParam) == IDCANCEL) {
                 EndDialog(hDlg, 1);
+				SetWindowLong(hDlg, DWL_MSGRESULT, 0);
                 return TRUE;
+			} else if (LOWORD(wParam) == IDC_PREVIEW) {
+				MyFilterData *mfd = (struct MyFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
+				if (mfd->ifp)
+					mfd->ifp->Toggle(hDlg);
+
+				SetWindowLong(hDlg, DWL_MSGRESULT, 0);
+				return TRUE;
             }
             break;
+
+        case WM_HSCROLL:
+			if (lParam) {
+				MyFilterData *mfd = (struct MyFilterData *)GetWindowLongPtr(hDlg, DWLP_USER);
+				HWND hwndScroll = (HWND)lParam;
+				UINT id = GetWindowLong(hwndScroll, GWL_ID);
+
+				if (id == IDC_BRIGHTNESS) {
+					int bright = SendMessage(hwndScroll, TBM_GETPOS, 0, 0)-256;
+					if (mfd->bright != bright) {
+						mfd->bright = bright;
+
+						if (mfd->ifp)
+							mfd->ifp->RedoFrame();
+					}
+				} else if (id == IDC_CONTRAST) {
+					int cont = SendMessage(hwndScroll, TBM_GETPOS, 0, 0);
+					if (mfd->cont != cont) {
+						mfd->cont = cont;
+
+						if (mfd->ifp)
+							mfd->ifp->RedoFrame();
+					}
+				}
+					
+
+				SetWindowLong(hDlg, DWL_MSGRESULT, 0);
+				return TRUE;
+			}
+			break;
     }
     return FALSE;
 }
 
 static int brightcont_config(FilterActivation *fa, const FilterFunctions *ff, HWND hWnd) {
-	return DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_BRIGHTCONT), hWnd, brightcontDlgProc, (LONG)fa->filter_data);
+	MyFilterData *mfd = (MyFilterData *)fa->filter_data;
+	mfd->ifp = fa->ifp;
+
+	MyFilterData tmp(*mfd);
+
+	if (DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_BRIGHTCONT), hWnd, brightcontDlgProc, (LONG)fa->filter_data))
+		return true;
+
+	*mfd = tmp;
+	return false;
 }
 
 static void brightcont_string(const FilterActivation *fa, const FilterFunctions *ff, char *buf) {

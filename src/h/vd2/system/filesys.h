@@ -100,6 +100,16 @@ VDStringW VDFileSplitExtRight(const VDStringW&);
 
 /////////////////////////////////////////////////////////////////////////////
 
+/// Perform a case-insensitive wildcard match against a filename; returns
+/// true if the pattern matches, false otherwise. '?' matches any single
+/// character, and '*' matches zero or more characters.
+///
+/// NOTE: This is not guaranteed or intended to perfectly match the
+/// underlying OS wildcard mechanism.
+bool VDFileWildMatch(const wchar_t *pattern, const wchar_t *path);
+
+/////////////////////////////////////////////////////////////////////////////
+
 sint64 VDGetDiskFreeSpace(const wchar_t *path);
 void VDCreateDirectory(const wchar_t *path);
 

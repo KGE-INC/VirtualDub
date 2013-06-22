@@ -507,7 +507,7 @@ private:
 	static INT_PTR CALLBACK ParseDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 	void setOptions(InputFileOptions *);
-	InputFileOptions *createOptions(const char *buf);
+	InputFileOptions *createOptions(const void *buf, uint32 len);
 	InputFileOptions *promptForOptions(HWND);
 public:
 	InputFileMPEG();
@@ -568,7 +568,7 @@ public:
 	void streamSetDesiredFrame(VDPosition frame_num);
 	VDPosition streamGetNextRequiredFrame(bool& is_preroll);
 	int streamGetRequiredCount(long *);
-	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num);
+	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num, VDPosition target_num);
 	uint32 streamGetDecodePadding() { return 8; }
 
 	const void *getFrame(VDPosition frameNum);
@@ -996,7 +996,7 @@ int VideoSourceMPEG::streamGetRequiredCount(long *pSize) {
 	return needed;
 }
 
-const void *VideoSourceMPEG::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num64) {
+const void *VideoSourceMPEG::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num64, VDPosition target_num) {
 	long frame_num = (long)frame_num64;
 	int buffer;
 
@@ -3098,12 +3098,12 @@ void InputFileMPEG::setOptions(InputFileOptions *_ifo) {
 		iDecodeMode |= InputFileMPEGOptions::DECODE_NO_B;
 }
 
-InputFileOptions *InputFileMPEG::createOptions(const char *buf) {
+InputFileOptions *InputFileMPEG::createOptions(const void *buf, uint32 len) {
 	InputFileMPEGOptions *ifo = new InputFileMPEGOptions();
 
 	if (!ifo) throw MyMemoryError();
 
-	if (!ifo->read(buf)) {
+	if (!ifo->read((const char *)buf)) {
 		delete ifo;
 		return NULL;
 	}

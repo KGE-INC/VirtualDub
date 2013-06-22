@@ -31,6 +31,7 @@ struct VDScriptObject {
 	const VDScriptFunctionDef		*func_list;
 	const VDScriptObjectDef			*obj_list;
 	const VDScriptObject		*pNextObject;
+	const VDScriptFunctionDef	*prop_list;
 };
 
 class VDScriptValue {

@@ -4,6 +4,7 @@
 #include <vector>
 #include <utility>
 #include <vd2/system/cache.h>
+#include <vd2/system/cpuaccel.h>
 #include <vd2/system/error.h>
 #include <vd2/system/thread.h>
 #include <vd2/system/time.h>
@@ -459,9 +460,10 @@ protected:
 
 	void DumpStatus();
 
-	void VDAPIENTRYV SetError(const char *format, ...);
-	void VDAPIENTRY SetErrorOutOfMemory();
-	void * VDAPIENTRY GetExtendedAPI(const char *pExtendedAPI);
+	void VDXAPIENTRYV SetError(const char *format, ...);
+	void VDXAPIENTRY SetErrorOutOfMemory();
+	void * VDXAPIENTRY GetExtendedAPI(const char *pExtendedAPI);
+	uint32 VDXAPIENTRY GetCPUFeatureFlags();
 
 	const VDPluginInfo			*mpInfo;
 	const VDVideoFilterDefinition	*mpDef;
@@ -1172,7 +1174,7 @@ void VDVideoFilterInstance::DumpStatus() {
 	}
 }
 
-void VDAPIENTRYV VDVideoFilterInstance::SetError(const char *format, ...) {
+void VDXAPIENTRYV VDVideoFilterInstance::SetError(const char *format, ...) {
 	va_list val;
 
 	va_start(val, format);
@@ -1180,14 +1182,18 @@ void VDAPIENTRYV VDVideoFilterInstance::SetError(const char *format, ...) {
 	va_end(val);
 }
 
-void VDAPIENTRY VDVideoFilterInstance::SetErrorOutOfMemory() {
+void VDXAPIENTRY VDVideoFilterInstance::SetErrorOutOfMemory() {
 	MyMemoryError e;
 
 	mError.TransferFrom(e);
 }
 
-void * VDAPIENTRY VDVideoFilterInstance::GetExtendedAPI(const char *pExtendedAPI) {
+void * VDXAPIENTRY VDVideoFilterInstance::GetExtendedAPI(const char *pExtendedAPI) {
 	return NULL;
+}
+
+uint32 VDXAPIENTRY VDVideoFilterInstance::GetCPUFeatureFlags() {
+	return CPUGetEnabledExtensions();
 }
 
 #if VD_BACKFACE_ENABLED

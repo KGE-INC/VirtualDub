@@ -1,5 +1,5 @@
 //	VirtualDub - Video processing and capture application
-//	Copyright (C) 1998-2001 Avery Lee
+//	Copyright (C) 1998-2007 Avery Lee
 //
 //	This program is free software; you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -15,21 +15,20 @@
 //	along with this program; if not, write to the Free Software
 //	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-#ifndef f_INPUTFILEIMAGES_H
-#define f_INPUTFILEIMAGES_H
+#ifndef f_AVIOUTPUTGIF_H
+#define f_AVIOUTPUTGIF_H
 
-#include "InputFile.h"
+#include <vd2/system/VDString.h>
+#include "AVIOutput.h"
 
-class InputFileImages : public InputFile {
+class VideoSource;
+
+class IVDAVIOutputGIF {
 public:
-	InputFileImages();
-	~InputFileImages();
-
-	void Init(const wchar_t *szFile);
-
-	void setAutomated(bool fAuto);
-
-	void InfoDialog(HWND hwndParent);
+	virtual AVIOutput *AsAVIOutput() = 0;
+	virtual void SetLoopCount(int loopCount) = 0;
 };
+
+IVDAVIOutputGIF *VDCreateAVIOutputGIF();
 
 #endif

@@ -500,6 +500,7 @@ bool AudioSourceAVI::IsVBR() const {
 AudioSourceDV::AudioSourceDV(IAVIReadStream *pStream, bool bAutomated)
 	: mpStream(pStream)
 	, mLastFrame(-1)
+	, mErrorMode(kErrorModeReportAll)
 {
 	bQuiet = bAutomated;	// ugh, this needs to go... V1.5.0.
 }
@@ -725,6 +726,7 @@ const AudioSourceDV::CacheLine *AudioSourceDV::LoadSet(VDPosition setpos) {
 				return NULL;
 
 			if (!bytes) {
+zero_fill:
 				uint32 n = mSamplesPerSet / 10;
 
 				if (cline.mRawSamples+n >= sizeof cline.mRawData / sizeof cline.mRawData[0]) {
@@ -760,6 +762,9 @@ const AudioSourceDV::CacheLine *AudioSourceDV::LoadSet(VDPosition setpos) {
 					minimumFrameSize	= isPAL ? 1264 : 1053;
 					break;
 				default:
+					if (mErrorMode != kErrorModeReportAll)
+						goto zero_fill;
+
 					return NULL;
 				}
 

@@ -75,13 +75,14 @@ BEGIN
         MENUITEM "Save segmented AVI...",       ID_FILE_SAVESEGMENTEDAVI
         MENUITEM "&Close video file\tCtrl-W",   ID_FILE_CLOSEAVI
         MENUITEM SEPARATOR
-        POPUP "Export"
+        POPUP "E&xport"
         BEGIN
             MENUITEM "Image sequence...",           ID_FILE_SAVEIMAGESEQ
             MENUITEM "Stripe master...",            ID_FILE_SAVESTRIPEMASTER
             MENUITEM "Striped AVI...",              ID_FILE_SAVESTRIPEDAVI
             MENUITEM "Adobe Filmstrip (*.flm)...",  ID_FILE_SAVEFILMSTRIP
             MENUITEM "Raw audio...",                ID_FILE_SAVERAWAUDIO
+            MENUITEM "Animated GIF...",             ID_FILE_SAVEANIMATEDGIF
         END
         MENUITEM "File &Information...",        ID_FILE_AVIINFO
         MENUITEM "Set text information...",     ID_FILE_SETTEXTINFO
@@ -219,7 +220,6 @@ BEGIN
         MENUITEM "Benchmark resampler",         ID_TOOLS_BENCHMARKRESAMPLER
         MENUITEM "Create palettized AVI...",    ID_TOOLS_CREATEPALETTIZEDAVI
         MENUITEM "Create test video...",        ID_TOOLS_CREATETESTVIDEO
-        MENUITEM "Create animated GIF...",      ID_FILE_SAVEANIMATEDGIF
     END
     POPUP "&Help"
     BEGIN
@@ -320,13 +320,14 @@ BEGIN
         POPUP "Preview acceleration"
         BEGIN
             MENUITEM "Off",                         ID_CAPTURE_HWACCEL_NONE
-            MENUITEM "Even lines only",             ID_CAPTURE_HWACCEL_TOP
-            MENUITEM "Odd lines only",              ID_CAPTURE_HWACCEL_BOTTOM
-            MENUITEM "Both fields (progressive)",   ID_CAPTURE_HWACCEL_BOTH
-            MENUITEM "Both fields (even first)",    ID_CAPTURE_HWACCEL_EVENFIRST
-            MENUITEM "Both fields (odd first)",     ID_CAPTURE_HWACCEL_ODDFIRST
-            MENUITEM "Non-interlaced (even first)", ID_CAPTURE_HWACCEL_NONINTEVEN
-            MENUITEM "Non-interlaced (odd first)",  ID_CAPTURE_HWACCEL_NONINTODD
+            MENUITEM "Progressive - even field only", ID_CAPTURE_HWACCEL_TOP
+            MENUITEM "Progressive - odd field only", ID_CAPTURE_HWACCEL_BOTTOM
+            MENUITEM "Progressive - both fields",   ID_CAPTURE_HWACCEL_BOTH
+            MENUITEM "Interlaced - frames",         ID_CAPTURE_HWACCEL_INTERLACED
+            MENUITEM "Interlaced - weave, even first", ID_CAPTURE_HWACCEL_EVENFIRST
+            MENUITEM "Interlaced - weave, odd first", ID_CAPTURE_HWACCEL_ODDFIRST
+            MENUITEM "Non-interlaced - field rate, even field first", ID_CAPTURE_HWACCEL_NONINTEVEN
+            MENUITEM "Non-interlaced - field rate, odd field first", ID_CAPTURE_HWACCEL_NONINTODD
         END
         MENUITEM SEPARATOR
         MENUITEM "Stretch to window",           ID_VIDEO_STRETCH
@@ -618,21 +619,23 @@ END
 // Dialog
 //
 
-IDD_DUBBING DIALOGEX 0, 0, 186, 158
+IDD_DUBBING DIALOGEX 0, 0, 186, 170
 STYLE DS_SETFONT | DS_MODALFRAME | DS_NOIDLEMSG | DS_FIXEDSYS | DS_CENTER | WS_MINIMIZEBOX | WS_POPUP | WS_CAPTION | WS_SYSMENU
 EXSTYLE WS_EX_NOPARENTNOTIFY
 CAPTION "VirtualDub Status"
 FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
-    PUSHBUTTON      "&Abort",IDC_ABORT,129,137,50,14
+    PUSHBUTTON      "&Abort",IDC_ABORT,129,149,50,14
     CONTROL         "Tab1",IDC_TABS,"SysTabControl32",WS_TABSTOP,7,7,172,85
     LTEXT           "Progress:",IDC_STATIC_PROGRESS,7,95,86,8
     CONTROL         "Progress1",IDC_PROGRESS,"msctls_progress32",WS_BORDER | 0x1,93,95,86,10
     LTEXT           "Processing thread &priority:",IDC_STATIC_PRIORITY,7,107,86,8
     COMBOBOX        IDC_PRIORITY,93,105,86,40,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    CONTROL         "Show &input video",IDC_DRAW_INPUT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,121,70,10
-    CONTROL         "Show &output video",IDC_DRAW_OUTPUT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,131,75,10
-    CONTROL         "Show &decompressed video",IDC_DRAW_DOUTPUT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,141,99,10
+    LTEXT           "Speed &limit:",IDC_STATIC_LIMIT,7,120,86,10
+    CONTROL         "",IDC_LIMIT,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | WS_TABSTOP,93,119,86,12
+    CONTROL         "Show &input video",IDC_DRAW_INPUT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,133,70,10
+    CONTROL         "Show &output video",IDC_DRAW_OUTPUT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,143,75,10
+    CONTROL         "Show &decompressed video",IDC_DRAW_DOUTPUT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,153,99,10
 END
 
 IDD_INTERLEAVE DIALOG  0, 0, 249, 175
@@ -802,7 +805,7 @@ CAPTION "About VirtualDub"
 FONT 8, "MS Shell Dlg", 0, 0, 0x0
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,283,218,50,14
-    LTEXT           "VirtualDub 1.7.1 - Copyright (C) 1998-2006 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",IDC_STATIC_VERSION,7,7,326,45
+    LTEXT           "VirtualDub 1.7.2 - Copyright (C) 1998-2007 by Avery Lee, All Rights Reserved.\nCompiled with $\n\nThis program is free software and may be distributed according to the terms of the GNU General Public License.",IDC_STATIC_VERSION,7,7,326,45
     LTEXT           "Build 0/release (baka baka baka)",IDC_FINALS_SUCK,7,54,238,8
     GROUPBOX        "Special thanks",IDC_STATIC,7,71,326,142
     LTEXT           "Please send all comments, criticism, etc. to <phaeron@virtualdub.org>.",IDC_STATIC,7,220,254,8
@@ -906,36 +909,38 @@ BEGIN
     RTEXT           "",IDC_AUDIO_DATARATE,142,176,133,10,SS_SUNKEN
 END
 
-IDD_FILTER_SINGVAR DIALOG  0, 0, 190, 62
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+IDD_FILTER_SINGVAR DIALOGEX 0, 0, 190, 62
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Dialog"
-FONT 8, "MS Shell Dlg"
+FONT 8, "MS Shell Dlg", 0, 0, 0x0
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,80,41,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,133,41,50,14
     CONTROL         "Slider1",IDC_SLIDER,"msctls_trackbar32",TBS_AUTOTICKS | WS_TABSTOP,7,7,176,21
     LTEXT           "None",IDC_STATIC,7,27,80,8
     RTEXT           "Maximum",IDC_STATIC,103,27,80,8
-    LTEXT           "",IDC_VALUE,7,43,59,8
+    LTEXT           "",IDC_VALUE,7,43,59,8,WS_DISABLED
+    DEFPUSHBUTTON   "OK",IDOK,80,41,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,133,41,50,14
+    PUSHBUTTON      "Show &preview",IDC_PREVIEW,7,41,50,14
 END
 
-IDD_FILTER_BRIGHTCONT DIALOG  0, 0, 280, 98
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+IDD_FILTER_BRIGHTCONT DIALOGEX 0, 0, 280, 98
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Filter: brightness/contrast"
-FONT 8, "MS Shell Dlg"
+FONT 8, "MS Shell Dlg", 0, 0, 0x0
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,165,77,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,223,77,50,14
+    LTEXT           "&Brightness",IDC_STATIC,7,10,34,8
     CONTROL         "Slider1",IDC_BRIGHTNESS,"msctls_trackbar32",TBS_AUTOTICKS | WS_TABSTOP,51,7,222,20
-    LTEXT           "Brightness",IDC_STATIC,7,10,34,8
-    LTEXT           "Contrast",IDC_STATIC,7,44,27,8
+    LTEXT           "Black",IDC_STATIC,51,26,19,8
+    LTEXT           "Normal",IDC_STATIC,150,26,23,8
+    LTEXT           "White",IDC_STATIC,253,26,20,8
+    LTEXT           "&Contrast",IDC_STATIC,7,44,27,8
     CONTROL         "Slider2",IDC_CONTRAST,"msctls_trackbar32",TBS_AUTOTICKS | WS_TABSTOP,51,42,222,20
     LTEXT           "0%",IDC_STATIC,55,62,10,8
-    LTEXT           "Black",IDC_STATIC,51,26,19,8
-    LTEXT           "White",IDC_STATIC,253,26,20,8
-    LTEXT           "Normal",IDC_STATIC,150,26,23,8
-    LTEXT           "200%",IDC_STATIC,255,62,18,8
     LTEXT           "100%",IDC_STATIC,153,62,18,8
+    LTEXT           "200%",IDC_STATIC,255,62,18,8
+    PUSHBUTTON      "Show &preview",IDC_PREVIEW,7,77,50,14,WS_DISABLED
+    DEFPUSHBUTTON   "OK",IDOK,165,77,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,223,77,50,14
 END
 
 IDD_FILTER_EMBOSS DIALOG  0, 0, 307, 106
@@ -1651,9 +1656,9 @@ BEGIN
     LTEXT           "Estimated call stack",IDC_STATIC,7,128,64,8
 END
 
-IDD_DUBBING_PERF DIALOG  0, 0, 172, 102
-STYLE DS_SETFONT | DS_CONTROL | WS_CHILD | WS_VISIBLE
-FONT 8, "MS Shell Dlg"
+IDD_DUBBING_PERF DIALOGEX 0, 0, 172, 102
+STYLE DS_SETFONT | DS_FIXEDSYS | DS_CONTROL | WS_CHILD | WS_VISIBLE
+FONT 8, "MS Shell Dlg", 0, 0, 0x0
 BEGIN
     GROUPBOX        "Input file I/O",IDC_STATIC,7,7,158,53
     LTEXT           "Optimizing for preview",IDC_STATIC,13,17,70,8
@@ -2403,7 +2408,7 @@ BEGIN
         RIGHTMARGIN, 179
         VERTGUIDE, 93
         TOPMARGIN, 7
-        BOTTOMMARGIN, 151
+        BOTTOMMARGIN, 163
     END
 
     IDD_INTERLEAVE, DIALOG
@@ -3432,8 +3437,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,7,1,0
- PRODUCTVERSION 1,7,1,0
+ FILEVERSION 1,7,2,0
+ PRODUCTVERSION 1,7,2,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -3450,12 +3455,12 @@ BEGIN
         BEGIN
             VALUE "Comments", "Watch anime, saiyu sen jiko yo!"
             VALUE "FileDescription", "VirtualDub"
-            VALUE "FileVersion", "1.7.1"
+            VALUE "FileVersion", "1.7.2"
             VALUE "InternalName", "VirtualDub"
-            VALUE "LegalCopyright", "Copyright © 1998-2006 by Avery Lee, All Rights Reserved."
+            VALUE "LegalCopyright", "Copyright © 1998-2007 by Avery Lee, All Rights Reserved."
             VALUE "OriginalFilename", "VirtualDub.exe"
             VALUE "ProductName", "VirtualDub"
-            VALUE "ProductVersion", "1.7.1"
+            VALUE "ProductVersion", "1.7.2"
         END
     END
     BLOCK "VarFileInfo"
@@ -3546,16 +3551,16 @@ IDC_MODIFYPOINT         CURSOR                  "modifypoint.cur"
 
 STRINGTABLE 
 BEGIN
-    IDS_TITLE_INITIAL       "VirtualDub 1.7.1 (build %d/%s) by Avery Lee"
-    IDS_TITLE_NOFILE        "VirtualDub 1.7.1"
-    IDS_TITLE_IDLE          "VirtualDub 1.7.1 - [%s]"
-    IDS_TITLE_DUBBING       "VirtualDub 1.7.1- [%s] (dub in progress)"
-    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.7.1"
+    IDS_TITLE_INITIAL       "VirtualDub 1.7.2 (build %d/%s) by Avery Lee"
+    IDS_TITLE_NOFILE        "VirtualDub 1.7.2"
+    IDS_TITLE_IDLE          "VirtualDub 1.7.2 - [%s]"
+    IDS_TITLE_DUBBING       "VirtualDub 1.7.2- [%s] (dub in progress)"
+    IDS_TITLE_DUBBING_MINIMIZED "%d%% [%s] - VirtualDub 1.7.2"
     IDS_TITLE_STATUS        "VirtualDub Status - [%s]"
-    IDS_TITLE_SERVING       "VirtualDub 1.7.1- serving [%s]"
-    IDS_TITLE_CAPTURE       "VirtualDub 1.7.1 - capture mode [%s]%s"
-    IDS_TITLE_FRAMESERVER   "VirtualDub 1.7.1 - frameserver mode"
-    IDS_TITLE_CAPTURE2      "VirtualDub 1.7.1 - capture mode [%s] (striped)%s"
+    IDS_TITLE_SERVING       "VirtualDub 1.7.2- serving [%s]"
+    IDS_TITLE_CAPTURE       "VirtualDub 1.7.2 - capture mode [%s]%s"
+    IDS_TITLE_FRAMESERVER   "VirtualDub 1.7.2 - frameserver mode"
+    IDS_TITLE_CAPTURE2      "VirtualDub 1.7.2 - capture mode [%s] (striped)%s"
     IDS_TITLE_IDLE2         "VirtualDub 1.7.1 - [%s] (%s)"
 END
 

@@ -22,6 +22,7 @@
 #include <vd2/system/w32assist.h>
 #include <vd2/system/math.h>
 #include <vd2/system/filesys.h>
+#include <vd2/system/time.h>
 #include <vd2/Kasumi/pixmap.h>
 #include <vd2/Kasumi/pixmapops.h>
 #include <vd2/Kasumi/pixmaputils.h>
@@ -444,9 +445,11 @@ protected:
 	bool ModifySource(const VDVideoDisplaySourceInfo& info);
 
 	bool IsValid();
+	bool IsFramePending() { return mSwapChainPresentLength != 0; }
 	void SetFilterMode(FilterMode mode);
 
 	bool Tick(int id);
+	void Poll();
 	bool Resize();
 	bool Update(UpdateMode);
 	void Refresh(UpdateMode);
@@ -457,16 +460,41 @@ protected:
 	float GetSyncDelta() const { return mSyncDelta; }
 
 protected:
-	void OnPreDeviceReset() { }
-	void OnPostDeviceReset() { }
+	void OnPreDeviceReset() {
+		mpSwapChain = NULL;
+		mSwapChainW = 0;
+		mSwapChainH = 0;
+
+		if (mpEffect)
+			mpEffect->OnLostDevice();
+	}
+	void OnPostDeviceReset() {
+		if (mpEffect)
+			mpEffect->OnResetDevice();
+	}
+
+	bool UpdateBackbuffer(const RECT& rClient, UpdateMode updateMode);
+	bool UpdateScreen(const RECT& rClient, UpdateMode updateMode, bool polling);
+	void DisplayError();
 
 	HWND				mhwnd;
+	HWND				mhwndError;
 	HMODULE				mhmodD3DX;
+	RECT				mrClient;
 
 	VDD3D9Manager		*mpManager;
 	IDirect3DDevice9	*mpD3DDevice;			// weak ref
 
 	vdrefptr<IVDVideoUploadContextD3D9>	mpUploadContext;
+
+	vdrefptr<IVDD3D9SwapChain>	mpSwapChain;
+	int					mSwapChainW;
+	int					mSwapChainH;
+	int					mSwapChainPresentLength;
+	bool				mbSwapChainImageValid;
+	bool				mbFirstPresent;
+
+	VDAtomicInt			mTickPending;
 
 	vdrefptr<IVDD3D9Texture>	mpTempTexture;
 	IDirect3DTexture9	*mpD3DTempTexture;		// weak ref
@@ -504,7 +532,16 @@ IVDVideoDisplayMinidriver *VDCreateVideoDisplayMinidriverD3DFX() {
 }
 
 VDVideoDisplayMinidriverD3DFX::VDVideoDisplayMinidriverD3DFX()
-	: mpManager(NULL)
+	: mhwnd(NULL)
+	, mhwndError(NULL)
+	, mhmodD3DX(NULL)
+	, mpManager(NULL)
+	, mSwapChainW(0)
+	, mSwapChainH(0)
+	, mbSwapChainImageValid(false)
+	, mbFirstPresent(false)
+	, mSwapChainPresentLength(0)
+	, mTickPending(0)
 	, mpD3DTempTexture(NULL)
 	, mpD3DTempTexture2(NULL)
 	, mpD3DTempSurface(NULL)
@@ -515,12 +552,14 @@ VDVideoDisplayMinidriverD3DFX::VDVideoDisplayMinidriverD3DFX()
 	, mbForceFrameUpload(false)
 	, mSyncDelta(0.0f)
 {
+	mrClient.top = mrClient.left = mrClient.right = mrClient.bottom = 0;
 }
 
 VDVideoDisplayMinidriverD3DFX::~VDVideoDisplayMinidriverD3DFX() {
 }
 
 bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceInfo& info) {
+	GetClientRect(hwnd, &mrClient);
 	mhwnd = hwnd;
 	mSource = info;
 	mSyncDelta = 0.0f;
@@ -530,6 +569,7 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 
 	if (!mhmodD3DX) {
 		mError = L"Cannot initialize the Direct3D FX system: Unable to load d3dx9_25.dll.";
+		DisplayError();
 		return true;
 	}
 
@@ -619,15 +659,16 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 
 	if (FAILED(hr)) {
 		if (pError)
-			mError.sprintf(L"Couldn't compile effect file %ls due to the following error:\n\n%hs\n\nIf you have Direct3D effects support enabled by mistake, it can be disabled under Options > Preferences > Display.", srcfile.c_str(), (const char *)pError->GetBufferPointer());
+			mError.sprintf(L"Couldn't compile effect file %ls due to the following error:\r\n\r\n%hs\r\n\r\nIf you have Direct3D effects support enabled by mistake, it can be disabled under Options > Preferences > Display.", srcfile.c_str(), (const char *)pError->GetBufferPointer());
 		else
-			mError.sprintf(L"Couldn't compile effect file %ls.\n\nIf you have Direct3D effects support enabled by mistake, it can be disabled under Options > Preferences > Display.", srcfile.c_str());
+			mError.sprintf(L"Couldn't compile effect file %ls.\r\n\r\nIf you have Direct3D effects support enabled by mistake, it can be disabled under Options > Preferences > Display.", srcfile.c_str());
 
 		if (pError)
 			pError->Release();
 
 		ShutdownEffect();
 
+		DisplayError();
 		return true;
 	}
 
@@ -688,6 +729,7 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 			hr = mpD3DDevice->CreateTexture(w, h, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &pTexture, NULL);
 			if (FAILED(hr)) {
 				mError.sprintf(L"Unable to create procedural texture in effect file %ls.", srcfile.c_str());
+				DisplayError();
 				ShutdownEffect();
 				return true;
 			}
@@ -723,6 +765,7 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 				if (pError)
 					pError->Release();
 				ShutdownEffect();
+				DisplayError();
 				return true;
 			}
 
@@ -788,6 +831,7 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 	// check if we don't have any recognizable techniques
 	if (!hTechniqueLastValid) {
 		mError.sprintf(L"Couldn't find a valid technique in effect file %ls:\nMust be one of 'point', 'bilinear', or 'bicubic.'", srcfile.c_str());
+		DisplayError();
 		ShutdownEffect();
 		return true;
 	}
@@ -801,6 +845,7 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 	if (mhTempTexture) {
 		if (!mpManager->CreateSharedTexture<VDD3D9TextureGeneratorFullSizeRTT>("rtt1", ~mpTempTexture)) {
 			mError = L"Unable to allocate temporary texture.";
+			DisplayError();
 			ShutdownEffect();
 			return true;
 		}
@@ -821,6 +866,7 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 	if (mhTempTexture2) {
 		if (!mpManager->CreateSharedTexture<VDD3D9TextureGeneratorFullSizeRTT>("rtt2", ~mpTempTexture2)) {
 			mError = L"Unable to allocate second temporary texture.";
+			DisplayError();
 			ShutdownEffect();
 			return true;
 		}
@@ -862,13 +908,17 @@ bool VDVideoDisplayMinidriverD3DFX::Init(HWND hwnd, const VDVideoDisplaySourceIn
 		return false;
 	}
 
-
 	VDDEBUG_D3DFXDISP("VideoDisplay/D3DFX: Initialization successful for %dx%d source image.\n", mSource.pixmap.w, mSource.pixmap.h);
 
+	mbFirstPresent = true;
 	return true;
 }
 
 void VDVideoDisplayMinidriverD3DFX::ShutdownEffect() {
+	mpSwapChain = NULL;
+	mSwapChainW = 0;
+	mSwapChainH = 0;
+
 	if (mpEffectCompiler) {
 		mpEffectCompiler->Release();
 		mpEffectCompiler = NULL;
@@ -881,6 +931,11 @@ void VDVideoDisplayMinidriverD3DFX::ShutdownEffect() {
 }
 
 void VDVideoDisplayMinidriverD3DFX::Shutdown() {
+	if (mhwndError) {
+		DestroyWindow(mhwndError);
+		mhwndError = NULL;
+	}
+
 	ShutdownEffect();
 
 	if (mpD3DTempSurface2) {
@@ -933,7 +988,19 @@ bool VDVideoDisplayMinidriverD3DFX::Tick(int id) {
 	return true;
 }
 
+void VDVideoDisplayMinidriverD3DFX::Poll() {
+	if (mSwapChainPresentLength) {
+		UpdateScreen(mrClient, kModeVSync, false);
+	}
+}
+
 bool VDVideoDisplayMinidriverD3DFX::Resize() {
+	mbSwapChainImageValid = false;
+	mSwapChainPresentLength = 0;
+	if (GetClientRect(mhwnd, &mrClient)) {
+		if (mhwndError)
+			SetWindowPos(mhwndError, NULL, 0, 0, mrClient.right, mrClient.bottom, SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
+	}
 	return true;
 }
 
@@ -945,8 +1012,11 @@ bool VDVideoDisplayMinidriverD3DFX::Update(UpdateMode mode) {
 	if (mbForceFrameUpload) {
 		if (mode & kModeFirstField)
 			fieldMode = kModeAllFields;
-		else
+		else if ((mode & kModeFieldMask) != kModeAllFields) {
+			UpdateBackbuffer(mrClient, mode);
+			mSource.mpCB->ReleaseActiveFrame();
 			return true;
+		}
 	}
 
 	int fieldMask = 3;
@@ -964,34 +1034,45 @@ bool VDVideoDisplayMinidriverD3DFX::Update(UpdateMode mode) {
 			break;
 	}
 
-	return mpUploadContext->Update(mSource.pixmap, fieldMask);
+	bool success = mpUploadContext->Update(mSource.pixmap, fieldMask);
+
+	mSource.mpCB->ReleaseActiveFrame();
+
+	if (!success)
+		return false;
+
+	UpdateBackbuffer(mrClient, mode);
+
+	return true;
 }
 
 void VDVideoDisplayMinidriverD3DFX::Refresh(UpdateMode mode) {
 	RECT r;
 	GetClientRect(mhwnd, &r);
 	if (r.right > 0 && r.bottom > 0) {
-		if (HDC hdc = GetDC(mhwnd)) {
-			Paint(hdc, r, mode);
-			ReleaseDC(mhwnd, hdc);
-		}
+		Paint(NULL, r, mode);
 	}
 }
 
-bool VDVideoDisplayMinidriverD3DFX::Paint(HDC hdc, const RECT& rClient0, UpdateMode updateMode) {
-	RECT rClient = rClient0;
+bool VDVideoDisplayMinidriverD3DFX::Paint(HDC hdc, const RECT& rClient, UpdateMode updateMode) {
 	if (!mpEffect) {
-		SetTextColor(hdc, GetSysColor(COLOR_BTNTEXT));
-		SetBkColor(hdc, GetSysColor(COLOR_3DFACE));
-		SetBkMode(hdc, OPAQUE);
-		ExtTextOut(hdc, 0, 0, ETO_OPAQUE, &rClient, "", 0, NULL);
-		if (HGDIOBJ hgofont = SelectObject(hdc, GetStockObject(DEFAULT_GUI_FONT))) {
-			VDDrawTextW32(hdc, mError.data(), mError.size(), (RECT *)&rClient, DT_VCENTER | DT_WORDBREAK);
-			SelectObject(hdc, hgofont);
-		}
+		mSource.mpCB->ReleaseActiveFrame();
 		return true;
 	}
 
+	return (mbSwapChainImageValid || UpdateBackbuffer(rClient, updateMode)) && UpdateScreen(rClient, updateMode, false);
+}
+
+void VDVideoDisplayMinidriverD3DFX::SetLogicalPalette(const uint8 *pLogicalPalette) {
+}
+
+bool VDVideoDisplayMinidriverD3DFX::UpdateBackbuffer(const RECT& rClient0, UpdateMode updateMode) {
+	VDASSERT(!mSwapChainPresentLength);
+	uint64 startTime = VDGetPreciseTick();
+	RECT rClient = rClient0;
+
+	int rtw = mpManager->GetMainRTWidth();
+	int rth = mpManager->GetMainRTHeight();
 	RECT rClippedClient={0,0,std::min<int>(rClient.right, mpManager->GetMainRTWidth()), std::min<int>(rClient.bottom, mpManager->GetMainRTHeight())};
 
 	const D3DPRESENT_PARAMETERS& pparms = mpManager->GetPresentParms();
@@ -1010,14 +1091,38 @@ bool VDVideoDisplayMinidriverD3DFX::Paint(HDC hdc, const RECT& rClient0, UpdateM
 	if (FAILED(hr))
 		return false;
 
+	// Check if we need to create or resize the swap chain.
+	if (mSwapChainW >= rClippedClient.right + 128 || mSwapChainH >= rClippedClient.bottom + 128) {
+		mpSwapChain = NULL;
+		mSwapChainW = 0;
+		mSwapChainH = 0;
+	}
+
+	if (!mpSwapChain || mSwapChainW < rClippedClient.right || mSwapChainH < rClippedClient.bottom) {
+		int scw = std::min<int>((rClippedClient.right + 127) & ~127, rtw);
+		int sch = std::min<int>((rClippedClient.bottom + 127) & ~127, rth);
+
+		VDDEBUG("Resizing swap chain to %dx%d\n", scw, sch);
+
+		if (!mpManager->CreateSwapChain(scw, sch, ~mpSwapChain))
+			return false;
+
+		mSwapChainW = scw;
+		mSwapChainH = sch;
+	}
+
 	// Do we need to switch bicubic modes?
 	FilterMode mode = mPreferredFilter;
 
 	if (mode == kFilterAnySuitable)
 		mode = kFilterBicubic;
 
-	mpManager->ResetBuffers();
-
+#if 0
+		{
+			double t = VDGetPreciseTick() * VDGetPreciseSecondsPerTick();
+			fprintf(loggf, "[%04.0f] Starting update\n", (t - floor(t)) * 1000.0);
+		}
+#endif
 	{
 		D3D_AUTOBREAK(SetStreamSource(0, mpManager->GetVertexBuffer(), 0, sizeof(Vertex)));
 		D3D_AUTOBREAK(SetIndices(mpManager->GetIndexBuffer()));
@@ -1026,7 +1131,15 @@ bool VDVideoDisplayMinidriverD3DFX::Paint(HDC hdc, const RECT& rClient0, UpdateM
 		D3D_AUTOBREAK(SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE));
 		D3D_AUTOBREAK(SetRenderState(D3DRS_ALPHATESTENABLE, FALSE));
 
-		D3D_AUTOBREAK(SetRenderTarget(0, mpManager->GetRenderTarget()));
+		vdrefptr<IDirect3DSurface9> pRTMain;
+		IDirect3DSwapChain9 *sc = mpSwapChain->GetD3DSwapChain();
+		hr = sc->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, ~pRTMain);
+		if (FAILED(hr))
+			return false;
+
+		mbSwapChainImageValid = false;
+
+		D3D_AUTOBREAK(SetRenderTarget(0, pRTMain));
 		D3D_AUTOBREAK(BeginScene());
 
 		D3DVIEWPORT9 vp = {
@@ -1219,7 +1332,7 @@ bool VDVideoDisplayMinidriverD3DFX::Paint(HDC hdc, const RECT& rClient0, UpdateM
 				else if (newTarget == 1)
 					D3D_AUTOBREAK(SetRenderTarget(0, mpD3DTempSurface2));
 				else {
-					D3D_AUTOBREAK(SetRenderTarget(0, mpManager->GetRenderTarget()));
+					D3D_AUTOBREAK(SetRenderTarget(0, pRTMain));
 					D3D_AUTOBREAK(SetViewport(&vp));
 				}
 			}
@@ -1251,26 +1364,95 @@ bool VDVideoDisplayMinidriverD3DFX::Paint(HDC hdc, const RECT& rClient0, UpdateM
 			D3D_AUTOBREAK_2(mpEffect->EndPass());
 		}
 
+#if 0
+		D3DRECT statRect[17], attemptRect[17];
+		for(int i=0; i<17; ++i) {
+			D3DRECT& r = statRect[i];
+			r.x1 = 0;
+			r.x2 = VDRoundToInt(mPresentHistory.mSuccessProb[i] * 400.0f) + 1;
+			r.y1 = 40 + 20*i;
+			r.y2 = 40 + 20*i + 5;
+
+			D3DRECT& r2 = attemptRect[i];
+			r2.x1 = 0;
+			r2.x2 = VDRoundToInt(mPresentHistory.mAttemptProb[i] * 400.0f) + 1;
+			r2.y1 = 40 + 20*i + 5;
+			r2.y2 = 40 + 20*i + 10;
+		}
+
+		mpD3DDevice->Clear(17, statRect, D3DCLEAR_TARGET, D3DCOLOR_ARGB(0, 255, 0, 0), 0.0f, 0);
+		mpD3DDevice->Clear(17, attemptRect, D3DCLEAR_TARGET, D3DCOLOR_ARGB(0, 0, 255, 0), 0.0f, 0);
+
+		D3DRECT barRect = {401, 0, 402, 340};
+		mpD3DDevice->Clear(1, &barRect, D3DCLEAR_TARGET, D3DCOLOR_ARGB(0, 128, 128, 128), 0.0f, 0);
+
+		D3DRECT targetRect = {0, 0, 400, 0};
+		targetRect.y1 = VDRoundToInt(mPresentHistory.mScanlineTarget * 400.0f / 1200.0f);
+		targetRect.y2 = targetRect.y1 + 1;
+		mpD3DDevice->Clear(1, &targetRect, D3DCLEAR_TARGET, D3DCOLOR_ARGB(0, 192, 192, 0), 0.0f, 0);
+#endif
+
 		D3D_AUTOBREAK_2(mpEffect->End());
 		D3D_AUTOBREAK(EndScene());
-
-		hr = mpManager->Present(&rClient, mhwnd, (updateMode & kModeVSync) != 0, mSyncDelta, mPresentHistory);
-
-		if (FAILED(hr)) {
-			VDDEBUG_D3DFXDISP("VideoDisplay/D3DFX: Render failed -- applying boot to the head.\n");
-
-			// TODO: Need to free all DEFAULT textures before proceeding
-
-			if (!mpManager->Reset())
-				return false;
-		}
+		mpManager->Flush();
 	}
+
+	mpManager->SetSwapChainActive(NULL);
+	mbSwapChainImageValid = true;
+	++mSwapChainPresentLength;
 
 d3d_failed:
 	return true;
 }
 
-void VDVideoDisplayMinidriverD3DFX::SetLogicalPalette(const uint8 *pLogicalPalette) {
+bool VDVideoDisplayMinidriverD3DFX::UpdateScreen(const RECT& rClient, UpdateMode updateMode, bool polling) {
+	if (!mbSwapChainImageValid || !mpSwapChain)
+		return false;
+
+	HRESULT hr = mpManager->PresentSwapChain(mpSwapChain, &rClient, mhwnd, (updateMode & kModeVSync) != 0, !polling, true, mSyncDelta, mPresentHistory);
+
+	bool dec = false;
+	if (hr == S_FALSE)
+		return true;
+	else if (hr == S_OK) {
+		if (mSwapChainPresentLength) {
+			dec = true;
+			--mSwapChainPresentLength;
+		}
+	}
+
+	// Workaround for Windows Vista DWM composition chain not updating.
+	if (mbFirstPresent) {
+		SetWindowPos(mhwnd, NULL, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE|SWP_NOZORDER|SWP_FRAMECHANGED);
+		mbFirstPresent = false;
+	}
+
+	if (FAILED(hr)) {
+		VDDEBUG("VideoDisplay/D3DFX: Render failed -- applying boot to the head.\n");
+
+		if (!mpManager->Reset())
+			return false;
+	} else if (dec) {
+		mSource.mpCB->RequestNextFrame();
+	}
+
+	return true;
+}
+
+void VDVideoDisplayMinidriverD3DFX::DisplayError() {
+	if (mhwndError) {
+		DestroyWindow(mhwndError);
+		mhwndError = NULL;
+	}
+
+	HINSTANCE hInst = VDGetLocalModuleHandleW32();
+	if (VDIsWindowsNT())
+		mhwndError = CreateWindowW(L"EDIT", mError.c_str(), WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY, 0, 0, mrClient.right, mrClient.bottom, mhwnd, NULL, hInst, NULL);
+	else
+		mhwndError = CreateWindowA("EDIT", VDTextWToA(mError).c_str(), WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY, 0, 0, mrClient.right, mrClient.bottom, mhwnd, NULL, hInst, NULL);
+
+	if (mhwndError)
+		SendMessage(mhwndError, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), 0);
 }
 
 ///////////////////////////////////////////////////////////////////////////

@@ -98,7 +98,7 @@ extern const struct VDVideoFilterDefinition vfilterDef_input = {
 	VDVideoFilterInput::MainProc,
 };
 
-extern const struct VDPluginInfo vpluginDef_input = {
+extern const VDPluginInfo vpluginDef_input = {
 	sizeof(VDPluginInfo),
 	L"input",
 	NULL,
@@ -182,7 +182,7 @@ extern const struct VDVideoFilterDefinition vfilterDef_test = {
 	VDVideoFilterTest::MainProc,
 };
 
-extern const struct VDPluginInfo vpluginDef_test = {
+extern const VDPluginInfo vpluginDef_test = {
 	sizeof(VDPluginInfo),
 	L"test",
 	NULL,

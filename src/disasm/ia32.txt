@@ -620,8 +620,8 @@ E2 modrm64128:			"psrad " $2[3-5]rmx ", " $3s
 E3 modrm64128:			"psraq " $2[3-5]rmx ", " $3s
 E4 modrm64128:			"pmulhuw " $2[3-5]rmx ", " $3s
 E5 modrm64128:			"pmulhw " $2[3-5]rmx ", " $3s
-[66] E7 modrm128:		"movntdq " $2[3-5]rx ", " $3s
-E7 modrm64m:			"movntq " $2[3-5]rm ", " $3s
+[66] E7 modrm128:		"movntdq " $3s ", " $2[3-5]rx
+E7 modrm64m:			"movntq " $3s ", " $2[3-5]rm
 E8 modrm64128:			"psubsb " $2[3-5]rmx ", " $3s
 E9 modrm64128:			"psubsw " $2[3-5]rmx ", " $3s
 EA modrm64128:			"pminsw " $2[3-5]rmx ", " $3s

@@ -47,7 +47,7 @@ public:
 	bool isFrameBufferValid()				{ return mCachedFrame >= 0; }
 	bool isStreaming()						{ return false; }
 
-	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num);
+	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition sample_num, VDPosition target_sample);
 
 	const void *getFrame(VDPosition frameNum);
 
@@ -249,7 +249,7 @@ bool VideoSourceImages::setTargetFormat(int format) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-const void *VideoSourceImages::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num) {
+const void *VideoSourceImages::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num, VDPosition target_sample) {
 	// We may get a zero-byte frame if we already have the image.
 
 	if (!data_len)
@@ -384,7 +384,7 @@ const void *VideoSourceImages::getFrame(VDPosition frameNum) {
 			uint32 lReadBytes;
 
 			read(frameNum, 1, pBuffer, lBytes, &lReadBytes, NULL);
-			pFrame = streamGetFrame(pBuffer, lReadBytes, FALSE, frameNum);
+			pFrame = streamGetFrame(pBuffer, lReadBytes, FALSE, frameNum, frameNum);
 		} catch(MyError e) {
 			delete[] pBuffer;
 			throw;

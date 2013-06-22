@@ -61,6 +61,10 @@ extern const VDScriptObject obj_VDVFiltInst;
 
 extern IVDPositionControlCallback *VDGetPositionControlCallbackTEMP();
 
+List			g_listFA;
+
+FilterSystem	filters;
+
 /////////////////////////////////////
 
 
@@ -213,6 +217,14 @@ void FilterDefinitionInstance::Detach() {
 
 ///////////////////////////////////////////////////////////////////////////
 //
+//	FilterInstanceAutoDeinit
+//
+///////////////////////////////////////////////////////////////////////////
+
+class FilterInstanceAutoDeinit : public vdrefcounted<IVDRefCount> {};
+
+///////////////////////////////////////////////////////////////////////////
+//
 //	FilterInstance
 //
 ///////////////////////////////////////////////////////////////////////////
@@ -229,25 +241,28 @@ FilterInstance::FilterInstance(const FilterInstance& fi)
 	, pvLastView		(fi.pvLastView)
 	, srcbuf			(fi.srcbuf)
 	, dstbuf			(fi.dstbuf)
-	, fNoDeinit			(fi.fNoDeinit)
 	, pfsiDelayRing		(NULL)
 	, mpFDInst			(fi.mpFDInst)
+	, mpAutoDeinit		(fi.mpAutoDeinit)
 	, mScriptFunc		(fi.mScriptFunc)
 	, mScriptObj		(fi.mScriptObj)
 	, mpAlphaCurve		(fi.mpAlphaCurve)
 {
+	if (mpAutoDeinit)
+		mpAutoDeinit->AddRef();
+
 	filter = const_cast<FilterDefinition *>(&fi.mpFDInst->Attach());
 }
 
 FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 	: FilterActivation((VFBitmap&)realDst, (VFBitmap&)realSrc, (VFBitmap*)&realLast)
 	, mpFDInst(fdi)
+	, mpAutoDeinit(NULL)
 {
 	filter = const_cast<FilterDefinition *>(&fdi->Attach());
 	src.hdc = NULL;
 	dst.hdc = NULL;
 	last->hdc = NULL;
-	fNoDeinit = false;
 	pfsiDelayRing = NULL;
 
 	if (filter->inst_data_size) {
@@ -258,6 +273,11 @@ FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 
 		if (filter->initProc)
 			try {
+				vdrefptr<FilterInstanceAutoDeinit> autoDeinit;
+				
+				if (!filter->copyProc && filter->deinitProc)
+					autoDeinit = new FilterInstanceAutoDeinit;
+
 				if (filter->initProc(this, &g_filterFuncs)) {
 					if (filter->deinitProc)
 						filter->deinitProc(this, &g_filterFuncs);
@@ -265,6 +285,8 @@ FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 					freemem(filter_data);
 					throw MyError("Filter failed to initialize.");
 				}
+
+				mpAutoDeinit = autoDeinit.release();
 			} catch(const MyError& e) {
 				throw MyError("Cannot initialize filter '%s': %s", filter->name, e.gets());
 			}
@@ -316,9 +338,13 @@ FilterInstance::FilterInstance(FilterDefinitionInstance *fdi)
 }
 
 FilterInstance::~FilterInstance() {
-	if (!fNoDeinit)
-		if (filter->deinitProc)
+	if (mpAutoDeinit) {
+		if (!mpAutoDeinit->Release())
 			filter->deinitProc(this, &g_filterFuncs);
+		mpAutoDeinit = NULL;
+	} else if (filter->deinitProc) {
+		filter->deinitProc(this, &g_filterFuncs);
+	}
 
 	freemem(filter_data);
 
@@ -351,11 +377,8 @@ void FilterInstance::Destroy() {
 	delete this;
 }
 
-void FilterInstance::ForceNoDeinit() {
-	fNoDeinit = true;
-}
-
 void FilterInstance::ConvertParameters(CScriptValue *dst, const VDScriptValue *src, int argc) {
+	int idx = 0;
 	while(argc-->0) {
 		const VDScriptValue& v = *src++;
 
@@ -376,11 +399,33 @@ void FilterInstance::ConvertParameters(CScriptValue *dst, const VDScriptValue *s
 				*dst = CScriptValue();
 				break;
 			default:
-				VDASSERT(false);
+				throw MyError("Script: Parameter %d is not of a supported type for filter configuration functions.");
 				break;
 		}
 
 		++dst;
+		++idx;
+	}
+}
+
+void FilterInstance::ConvertValue(VDScriptValue& dst, const CScriptValue& v) {
+	switch(v.type) {
+		case VDScriptValue::T_INT:
+			dst = VDScriptValue(v.asInt());
+			break;
+		case VDScriptValue::T_STR:
+			dst = VDScriptValue(v.asString());
+			break;
+		case VDScriptValue::T_LONG:
+			dst = VDScriptValue(v.asLong());
+			break;
+		case VDScriptValue::T_DOUBLE:
+			dst = VDScriptValue(v.asDouble());
+			break;
+		case VDScriptValue::T_VOID:
+		default:
+			dst = VDScriptValue();
+			break;
 	}
 }
 
@@ -448,7 +493,7 @@ void FilterInstance::ScriptFunctionThunkVariadic(IVDScriptInterpreter *isi, VDSc
 	VDScriptInterpreterAdapter adapt(isi);
 	CScriptValue v(pf(&adapt, static_cast<FilterActivation *>(thisPtr), &params[0], argc));
 
-	argv[0] = (VDScriptValue&)v;
+	ConvertValue(argv[0], v);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -527,11 +572,14 @@ void FilterEnumerateFilters(std::list<FilterBlurb>& blurbs) {
 
 //////////////////
 
-typedef struct FilterValueInit {
+struct FilterValueInit {
 	LONG lMin, lMax;
 	LONG cVal;
-	char *title;
-} FilterValueInit;
+	const char *title;
+	IFilterPreview *ifp;
+	void (*mpUpdateFunction)(long value, void *data);
+	void *mpUpdateFunctionData;
+};
 
 static INT_PTR CALLBACK FilterValueDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
 	FilterValueInit *fvi;
@@ -544,6 +592,12 @@ static INT_PTR CALLBACK FilterValueDlgProc( HWND hDlg, UINT message, WPARAM wPar
 			SendMessage(GetDlgItem(hDlg, IDC_SLIDER), TBM_SETRANGE, (WPARAM)FALSE, MAKELONG(fvi->lMin, fvi->lMax));
 			SendMessage(GetDlgItem(hDlg, IDC_SLIDER), TBM_SETPOS, (WPARAM)TRUE, fvi->cVal); 
 			SetWindowLongPtr(hDlg, DWLP_USER, (LONG)fvi);
+
+			if (fvi->ifp) {
+				HWND hwndPreviewButton = GetDlgItem(hDlg, IDC_PREVIEW);
+				EnableWindow(hwndPreviewButton, TRUE);
+				fvi->ifp->InitButton(hwndPreviewButton);
+			}
             return (TRUE);
 
         case WM_COMMAND:
@@ -552,34 +606,57 @@ static INT_PTR CALLBACK FilterValueDlgProc( HWND hDlg, UINT message, WPARAM wPar
 				fvi = (FilterValueInit *)GetWindowLongPtr(hDlg, DWLP_USER);
 				fvi->cVal = SendMessage(GetDlgItem(hDlg, IDC_SLIDER), TBM_GETPOS, 0,0);
 				EndDialog(hDlg, TRUE);
-				return TRUE;
+				break;
 			case IDCANCEL:
 	            EndDialog(hDlg, FALSE);  
-		        return TRUE;
+				break;
+			case IDC_PREVIEW:
+				fvi = (FilterValueInit *)GetWindowLongPtr(hDlg, DWLP_USER);
+				if (fvi->ifp)
+					fvi->ifp->Toggle(hDlg);
+				break;
+			default:
+				return FALSE;
 			}
-            break;
+			SetWindowLongPtr(hDlg, DWLP_MSGRESULT, 0);
+			return TRUE;
 
-		case WM_NOTIFY:
-			{
-				HWND hwndItem = GetDlgItem(hDlg, IDC_SLIDER);
-				SetDlgItemInt(hDlg, IDC_VALUE, SendMessage(hwndItem, TBM_GETPOS, 0,0), FALSE);
+		case WM_HSCROLL:
+			if (lParam) {
+				HWND hwndScroll = (HWND)lParam;
+
+				fvi = (FilterValueInit *)GetWindowLongPtr(hDlg, DWLP_USER);
+				fvi->cVal = SendMessage(hwndScroll, TBM_GETPOS, 0, 0);
+
+				if (fvi->mpUpdateFunction)
+					fvi->mpUpdateFunction(fvi->cVal, fvi->mpUpdateFunctionData);
+
+				if (fvi->ifp)
+					fvi->ifp->RedoFrame();
 			}
+			SetWindowLongPtr(hDlg, DWLP_MSGRESULT, 0);
 			return TRUE;
     }
     return FALSE;
 }
 
-LONG FilterGetSingleValue(HWND hWnd, LONG cVal, LONG lMin, LONG lMax, char *title) {
+LONG FilterGetSingleValue(HWND hWnd, LONG cVal, LONG lMin, LONG lMax, char *title, IFilterPreview *ifp, void (*pUpdateFunction)(long value, void *data), void *pUpdateFunctionData) {
 	FilterValueInit fvi;
-	char tbuf[128];
+	VDStringA tbuf;
+	tbuf.sprintf("Filter: %s", title);
 
 	fvi.cVal = cVal;
 	fvi.lMin = lMin;
 	fvi.lMax = lMax;
-	fvi.title = tbuf;
-	wsprintf(tbuf, "Filter: %s",title);
-	DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_SINGVAR), hWnd, FilterValueDlgProc, (LPARAM)&fvi);
-	return fvi.cVal;
+	fvi.title = tbuf.c_str();
+	fvi.ifp = ifp;
+	fvi.mpUpdateFunction = pUpdateFunction;
+	fvi.mpUpdateFunctionData = pUpdateFunctionData;
+
+	if (DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_FILTER_SINGVAR), hWnd, FilterValueDlgProc, (LPARAM)&fvi))
+		return fvi.cVal;
+
+	return cVal;
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -606,6 +683,11 @@ BOOL FilterPreview::DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
 		return TRUE;
 
 	case WM_DESTROY:
+		if (mpDisplay) {
+			mpDisplay->Destroy();
+			mpDisplay = NULL;
+			mhwndDisplay = NULL;
+		}
 		mDlgNode.Remove();
 		return TRUE;
 
@@ -674,9 +756,9 @@ void FilterPreview::OnInit() {
 			if (!inputVideoAVI->setDecompressedFormat(16))
 				inputVideoAVI->setDecompressedFormat(8);
 
-	mhwndDisplay = CreateWindow(VIDEODISPLAYCONTROLCLASS, NULL, WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS, 0, 0, 0, 0, hdlg, NULL, g_hInst, NULL);
+	mhwndDisplay = (HWND)VDCreateDisplayWindowW32(0, WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS, 0, 0, 0, 0, (VDGUIHandle)hdlg);
 	if (mhwndDisplay)
-		mpDisplay = VDGetIVideoDisplay(mhwndDisplay);
+		mpDisplay = VDGetIVideoDisplay((VDGUIHandle)mhwndDisplay);
 
 	mhwndToolTip = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL, WS_POPUP|TTS_NOPREFIX|TTS_ALWAYSTIP,
 			CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,

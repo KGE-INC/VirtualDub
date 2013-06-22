@@ -209,7 +209,7 @@ extern const struct VDVideoFilterDefinition vfilterDef_IVTC = {
 	VDVideoFilterIVTC::MainProc,
 };
 
-extern const struct VDPluginInfo vpluginDef_IVTC = {
+extern const VDPluginInfo vpluginDef_IVTC = {
 	sizeof(VDPluginInfo),
 	L"IVTC",
 	NULL,

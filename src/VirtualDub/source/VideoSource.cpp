@@ -1038,7 +1038,7 @@ void VideoSourceAVI::redoKeyFlags() {
 				goto rekey_error;
 
 
-			streamGetFrame(lpInputBuffer, lActualBytes, FALSE, lSample);
+			streamGetFrame(lpInputBuffer, lActualBytes, FALSE, lSample, lSample);
 
 			ptr = (unsigned char *)lpvBuffer;
 			y = lHeight;
@@ -1082,7 +1082,7 @@ rekey_error:
 //				throw MyAVIError("VideoSourceAVI", err);
 				goto rekey_error2;
 
-			streamGetFrame(lpInputBuffer, lActualBytes, FALSE, lSample);
+			streamGetFrame(lpInputBuffer, lActualBytes, FALSE, lSample, lSample);
 
 			ptr = (unsigned char *)lpvBuffer;
 			y = lHeight;
@@ -1711,7 +1711,7 @@ void VideoSourceAVI::streamBegin(bool fRealTime, bool bForceReset) {
 	mbDecodeRealTime = fRealTime;
 }
 
-const void *VideoSourceAVI::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num) {
+const void *VideoSourceAVI::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num, VDPosition target_sample) {
 	if (isKey(frame_num)) {
 		if (mbConcealingErrors) {
 			const unsigned frame = (unsigned)frame_num;
@@ -1839,8 +1839,6 @@ const void *VideoSourceAVI::getFrame(VDPosition lFrameDesired) {
 
 	lFrameNum = lFrameKey = nearestKey(lFrameDesired);
 
-	_RPT1(0,"Nearest key frame: %ld\n", lFrameKey);
-
 	if (lLastFrame > lFrameKey && lLastFrame < lFrameDesired)
 		lFrameNum = lLastFrame+1;
 
@@ -1880,7 +1878,7 @@ const void *VideoSourceAVI::getFrame(VDPosition lFrameDesired) {
 		if (!lBytesRead)
 			continue;
 
-		streamGetFrame(dataBuffer.data(), lBytesRead, false, lFrameNum);
+		streamGetFrame(dataBuffer.data(), lBytesRead, false, lFrameNum, lFrameNum);
 
 	} while(++lFrameNum <= lFrameDesired);
 

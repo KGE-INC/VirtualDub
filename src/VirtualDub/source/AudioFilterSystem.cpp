@@ -3,6 +3,7 @@
 #include <list>
 #include <utility>
 
+#include <vd2/system/cpuaccel.h>
 #include <vd2/system/vdalloc.h>
 #include <vd2/system/VDScheduler.h>
 #include <vd2/system/Error.h>
@@ -174,9 +175,10 @@ protected:
 	bool Service();
 	void DumpStatus();
 
-	void VDAPIENTRYV SetError(const char *format, ...);
-	void VDAPIENTRY SetErrorOutOfMemory();
-	void * VDAPIENTRY GetExtendedAPI(const char *pExtendedAPI);
+	void VDXAPIENTRYV SetError(const char *format, ...);
+	void VDXAPIENTRY SetErrorOutOfMemory();
+	void * VDXAPIENTRY GetExtendedAPI(const char *pExtendedAPI);
+	uint32 VDXAPIENTRY GetCPUFeatureFlags();
 
 	VDPluginDescription *mpDescription;
 	const VDPluginInfo *mpPluginInfo;
@@ -896,7 +898,7 @@ void VDAudioFilterInstance::DumpStatus() {
 	}
 }
 
-void VDAPIENTRYV VDAudioFilterInstance::SetError(const char *format, ...) {
+void VDXAPIENTRYV VDAudioFilterInstance::SetError(const char *format, ...) {
 	va_list val;
 
 	va_start(val, format);
@@ -904,14 +906,18 @@ void VDAPIENTRYV VDAudioFilterInstance::SetError(const char *format, ...) {
 	va_end(val);
 }
 
-void VDAPIENTRY VDAudioFilterInstance::SetErrorOutOfMemory() {
+void VDXAPIENTRY VDAudioFilterInstance::SetErrorOutOfMemory() {
 	MyMemoryError e;
 
 	mError.TransferFrom(e);
 }
 
-void * VDAPIENTRY VDAudioFilterInstance::GetExtendedAPI(const char *pExtendedAPI) {
+void * VDXAPIENTRY VDAudioFilterInstance::GetExtendedAPI(const char *pExtendedAPI) {
 	return NULL;
+}
+
+uint32 VDXAPIENTRY VDAudioFilterInstance::GetCPUFeatureFlags() {
+	return CPUGetEnabledExtensions();
 }
 
 ///////////////////////////////////////////////////////////////////////////

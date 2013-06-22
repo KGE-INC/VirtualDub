@@ -349,7 +349,7 @@ extern const struct VDAudioFilterDefinition afilterDef_pitchshift = {
 	&VDAudioFilterBase::sVtbl,
 };
 
-extern const struct VDPluginInfo apluginDef_pitchshift = {
+extern const VDPluginInfo apluginDef_pitchshift = {
 	sizeof(VDPluginInfo),
 	L"ratty pitch shift",
 	NULL,

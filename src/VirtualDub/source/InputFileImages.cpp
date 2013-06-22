@@ -37,17 +37,6 @@ void InputFileImages::Init(const wchar_t *szFile) {
 	videoSrc = VDCreateVideoSourceImages(szFile);
 }
 
-void InputFileImages::setOptions(InputFileOptions *_ifo) {
-}
-
-InputFileOptions *InputFileImages::createOptions(const char *buf) {
-	return NULL;
-}
-
-InputFileOptions *InputFileImages::promptForOptions(HWND hwnd) {
-	return NULL;
-}
-
 void InputFileImages::setAutomated(bool fAuto) {
 }
 

@@ -47,7 +47,7 @@ public:
 	bool isFrameBufferValid()				{ return mCachedFrame >= 0; }
 	bool isStreaming()						{ return false; }
 
-	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num);
+	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition sample_num, VDPosition target_num);
 
 	const void *getFrame(VDPosition frameNum);
 
@@ -180,7 +180,7 @@ bool VDVideoSourceTest::setTargetFormat(int format) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num) {
+const void *VDVideoSourceTest::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num, VDPosition target_sample) {
 	// We may get a zero-byte frame if we already have the image.
 	if (!data_len)
 		return getFrameBuffer();
@@ -507,7 +507,7 @@ const void *VDVideoSourceTest::getFrame(VDPosition frameNum) {
 	if (mCachedFrame == frameNum)
 		return lpvBuffer;
 
-	return streamGetFrame(&frameNum, sizeof(VDPosition), FALSE, frameNum);
+	return streamGetFrame(&frameNum, sizeof(VDPosition), FALSE, frameNum, frameNum);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -586,7 +586,7 @@ public:
 	void Init(const wchar_t *szFile);
 
 	void setOptions(InputFileOptions *_ifo);
-	InputFileOptions *createOptions(const char *buf);
+	InputFileOptions *createOptions(const void *buf, uint32 len);
 	InputFileOptions *promptForOptions(HWND hwnd);
 
 	void setAutomated(bool fAuto);
@@ -611,11 +611,11 @@ void VDInputFileTest::setOptions(InputFileOptions *_ifo) {
 	mOptions = *static_cast<VDInputFileTestOptions *>(_ifo);
 }
 
-InputFileOptions *VDInputFileTest::createOptions(const char *buf) {
+InputFileOptions *VDInputFileTest::createOptions(const void *buf, uint32 len) {
 	VDInputFileTestOptions *opts = new_nothrow VDInputFileTestOptions;
 
 	if (opts) {
-		if (opts->read(buf))
+		if (opts->read((const char *)buf))
 			return opts;
 
 		delete opts;

@@ -161,6 +161,8 @@ protected:
 
 	RECT		mrInputFrame;
 	RECT		mrOutputFrame;
+	bool		mbInputFrameValid;
+	bool		mbOutputFrameValid;
 
 	WNDPROC		mOldWndProc;
 	bool		mbDubActive;

@@ -85,7 +85,7 @@ extern const struct VDAudioFilterDefinition afilterDef_split = {
 	&VDAudioFilterBase::sVtbl,
 };
 
-extern const struct VDPluginInfo apluginDef_split = {
+extern const VDPluginInfo apluginDef_split = {
 	sizeof(VDPluginInfo),
 	L"split",
 	NULL,

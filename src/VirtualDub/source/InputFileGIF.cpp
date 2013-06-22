@@ -35,13 +35,21 @@ private:
 	VDPosition	mCachedFrame;
 	uint32		mWidth;
 	uint32		mHeight;
+	uint32		mBackgroundColor;
 	bool		mbKeyframeOnly;
 
 	vdblock<uint8>	mImage;
 
+	enum {
+		kRestoreNone,
+		kRestoreToColor,
+		kRestoreToPrevious
+	};
+
 	struct ImageInfo {
 		uint32	mOffsetAndKey;
 		sint16	mTranspColor;
+		uint8	mRestoreMode;
 	};
 
 	typedef vdfastvector<ImageInfo> Images;
@@ -49,6 +57,7 @@ private:
 
 	vdfastvector<uint8> mUnpackBuffer;
 	vdfastvector<uint32> mFrameBuffer;
+	vdfastvector<uint32> mRestoreBuffer;
 	uint32		mGlobalColorTable[256];
 
 public:
@@ -68,7 +77,8 @@ public:
 		if (bForceReset)
 			streamRestart();
 	}
-	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num);
+
+	const void *streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition sample_num, VDPosition target_sample);
 
 	char getFrameTypeChar(VDPosition lFrameNum)	{ return isKey(lFrameNum) ? 'K' : ' '; }
 	eDropType getDropType(VDPosition lFrameNum)	{ return isKey(lFrameNum) ? kDependant : kIndependent; }
@@ -145,6 +155,8 @@ VDVideoSourceGIF::VDVideoSourceGIF(const wchar_t *pFilename)
 	mWidth = VDReadUnalignedLEU16(&src[pos]);
 	mHeight = VDReadUnalignedLEU16(&src[pos + 2]);
 
+	uint8 backgroundColorIndex = src[pos + 5];
+
 	BITMAPINFOHEADER *bih = (BITMAPINFOHEADER *)allocFormat(sizeof(BITMAPINFOHEADER));
 	bih->biSize = sizeof(BITMAPINFOHEADER);
 	bih->biWidth = mWidth;
@@ -168,6 +180,7 @@ VDVideoSourceGIF::VDVideoSourceGIF(const wchar_t *pFilename)
 	streamInfo.dwScale		= 1;
 
 	mFrameBuffer.resize(mWidth * mHeight);
+	mRestoreBuffer.resize(mWidth * mHeight);
 	mUnpackBuffer.resize(mWidth * mHeight);
 	AllocFrameBuffer(bih->biSizeImage);
 
@@ -177,6 +190,7 @@ VDVideoSourceGIF::VDVideoSourceGIF(const wchar_t *pFilename)
 	pos += 7;
 
 	// parse global color table
+	mBackgroundColor = 0;
 	if (hasGlobalColorTable) {
 		uint32 globalColorTableSize = 1 << globalColorTableBits;
 
@@ -189,6 +203,8 @@ VDVideoSourceGIF::VDVideoSourceGIF(const wchar_t *pFilename)
 		}
 
 		VDMemset32(mGlobalColorTable + globalColorTableSize, 0xFFFFFFFF, 256 - globalColorTableSize);
+
+		mBackgroundColor = mGlobalColorTable[backgroundColorIndex];
 	} else {
 		for(int i=0; i<256; ++i)
 			mGlobalColorTable[i] = 0x010101*i + 0xFF000000;
@@ -199,7 +215,7 @@ VDVideoSourceGIF::VDVideoSourceGIF(const wchar_t *pFilename)
 	uint32 timebase = 0;
 	uint32 spantotal = 0;
 	uint32 spancount = 0;
-	ImageInfo imageinfo = { 0, -1 };
+	ImageInfo imageinfo = { 0, -1, kRestoreNone };
 	for(;;) {
 		if (len - pos < 1)
 			break;
@@ -233,9 +249,25 @@ VDVideoSourceGIF::VDVideoSourceGIF(const wchar_t *pFilename)
 					++spancount;
 				}
 
+				uint8 flags = src[pos];
+
 				imageinfo.mTranspColor = -1;
-				if (src[pos] & 0x01)
+				if (flags & 0x01)
 					imageinfo.mTranspColor = src[pos + 3];
+
+				uint8 disposalMode = (flags >> 2) & 7;
+
+				switch(disposalMode) {
+					case 2:
+						imageinfo.mRestoreMode = kRestoreToColor;
+						break;
+					case 3:
+						imageinfo.mRestoreMode = kRestoreToPrevious;
+						break;
+					default:
+						imageinfo.mRestoreMode = kRestoreNone;
+						break;
+				}
 			}
 
 			pos += length;
@@ -314,6 +346,7 @@ VDVideoSourceGIF::VDVideoSourceGIF(const wchar_t *pFilename)
 		mImages.push_back(imageinfo);
 
 		imageinfo.mTranspColor = -1;
+		imageinfo.mRestoreMode = kRestoreNone;
 	}
 finish:
 	;
@@ -407,19 +440,22 @@ const void *VDVideoSourceGIF::getFrame(VDPosition frameNum) {
 		uint32 lReadBytes;
 
 		read(frameNum, 1, buffer.data(), lBytes, &lReadBytes, NULL);
-		pFrame = streamGetFrame(buffer.data(), lReadBytes, FALSE, frameNum);
+		pFrame = streamGetFrame(buffer.data(), lReadBytes, FALSE, frameNum, frameNum);
 	}
 
 	return pFrame;
 }
 
-const void *VDVideoSourceGIF::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num) {
+const void *VDVideoSourceGIF::streamGetFrame(const void *inputBuffer, uint32 data_len, bool is_preroll, VDPosition frame_num, VDPosition target_sample) {
 	const ImageInfo& imageinfo = mImages[(uint32)frame_num];
 	uint32 pos = imageinfo.mOffsetAndKey & 0x7FFFFFFF;
 	sint16 transpColor = imageinfo.mTranspColor;
 
 	if (!data_len || !pos)
 		return getFrameBuffer();
+
+	if (imageinfo.mOffsetAndKey & 0x80000000)
+		VDMemset32Rect(mFrameBuffer.data(), mWidth * sizeof(uint32), mBackgroundColor, mWidth, mHeight);
 
 	// decompress lines
 	const uint8 *src = mImage.data();
@@ -431,10 +467,23 @@ const void *VDVideoSourceGIF::streamGetFrame(const void *inputBuffer, uint32 dat
 		uint16	mLength;
 	} dict[4096] = {0};
 
-	const int x = VDReadUnalignedLEU16(&src[pos + 0]);
-	const int y = VDReadUnalignedLEU16(&src[pos + 2]);
-	const int w = VDReadUnalignedLEU16(&src[pos + 4]);
-	const int h = VDReadUnalignedLEU16(&src[pos + 6]);
+	int x = VDReadUnalignedLEU16(&src[pos + 0]);
+	int y = VDReadUnalignedLEU16(&src[pos + 2]);
+	int w = VDReadUnalignedLEU16(&src[pos + 4]);
+	int h = VDReadUnalignedLEU16(&src[pos + 6]);
+
+	// bounds check positions
+	if ((uint32)x >= mWidth || (uint32)y >= mHeight)
+		return NULL;
+
+	if ((uint32)(x+w) >= mWidth)
+		w = mWidth - x;
+
+	if ((uint32)(y+h) >= mHeight)
+		h = mHeight - y;
+
+	if (imageinfo.mRestoreMode == kRestoreToPrevious)
+		VDMemcpyRect(mRestoreBuffer.data(), w * sizeof(uint32), &mFrameBuffer[x + y*mWidth], mWidth * sizeof(uint32), w*sizeof(uint32), h);
 
 	bool hasLocalColorTable = (src[pos + 8] & 0x80) != 0;
 	bool interlaced = (src[pos + 8] & 0x40) != 0;
@@ -456,6 +505,8 @@ const void *VDVideoSourceGIF::streamGetFrame(const void *inputBuffer, uint32 dat
 	}
 
 	uint8 minimumCodeSize = src[pos++];
+	if (minimumCodeSize > 8)
+		throw MyError("Decoding error in frame %ld (invalid minimum code size).", (long)frame_num);
 	uint32 baseCodes = 1 << minimumCodeSize;
 
 	for(uint32 i=0; i<baseCodes; ++i) {
@@ -608,6 +659,11 @@ xit:
 		VDPixmapBlt(mTargetFormat, srcbm);
 	}
 
+	if (imageinfo.mRestoreMode == kRestoreToPrevious)
+		VDMemcpyRect(&mFrameBuffer[x + y*mWidth], mWidth * sizeof(uint32), mRestoreBuffer.data(), w * sizeof(uint32), w*sizeof(uint32), h);
+	else if (imageinfo.mRestoreMode == kRestoreToColor)
+		VDMemset32Rect(&mFrameBuffer[x + y*mWidth], mWidth * sizeof(uint32), mBackgroundColor, w, h);
+
 	mCachedFrame = frame_num;
 
 	return getFrameBuffer();
@@ -625,6 +681,7 @@ bool VDVideoSourceGIF::setTargetFormat(int format) {
 		if (!VideoSource::setTargetFormat(format))
 			return false;
 
+		stream_current_frame = -1;
 		invalidateFrameBuffer();
 		return true;
 	}
@@ -641,10 +698,6 @@ public:
 
 	void Init(const wchar_t *szFile);
 
-	void setOptions(InputFileOptions *_ifo);
-	InputFileOptions *createOptions(const char *buf);
-	InputFileOptions *promptForOptions(HWND hwnd);
-
 	void setAutomated(bool fAuto);
 
 	void InfoDialog(HWND hwndParent);
@@ -659,17 +712,6 @@ VDInputFileGIF::~VDInputFileGIF() {
 
 void VDInputFileGIF::Init(const wchar_t *szFile) {
 	videoSrc = new VDVideoSourceGIF(szFile);
-}
-
-void VDInputFileGIF::setOptions(InputFileOptions *_ifo) {
-}
-
-InputFileOptions *VDInputFileGIF::createOptions(const char *buf) {
-	return NULL;
-}
-
-InputFileOptions *VDInputFileGIF::promptForOptions(HWND hwnd) {
-	return NULL;
 }
 
 void VDInputFileGIF::setAutomated(bool fAuto) {

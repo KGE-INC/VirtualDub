@@ -792,10 +792,10 @@ private:
 					break;
 				}
 
-				const unsigned long ptr1 = (unsigned long)dct_long_tab[(v>>3)-16];
-				const unsigned long ptr2 = (unsigned long)dct_vlong_tab[v-16];
+				const uintptr ptr1 = (uintptr)dct_long_tab[(v>>3)-16];
+				const uintptr ptr2 = (uintptr)dct_vlong_tab[v-16];
 
-				signed long switch1 = (signed long)(v - 0x080) >> 31;
+				sintptr switch1 = (sintptr)(sint32)(v - 0x080) >> (sizeof(void *) * 8 - 1);
 
 				//	range				switch1		switch2
 				//	80000000-FFFFFFFF	true		?

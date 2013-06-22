@@ -488,9 +488,6 @@ INT_PTR CALLBACK FilterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 					fa = (FilterInstance *)g_listFA.tail.next;
 
 					while(fa2 = (FilterInstance *)fa->next) {
-						if (!fa->filter->copyProc)
-							fa->ForceNoDeinit();
-
 						delete fa;
 
 						fa = fa2;
@@ -516,8 +513,6 @@ INT_PTR CALLBACK FilterDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 
 					fa = (FilterInstance *)list.tail.next;
 					while(fa2 = (FilterInstance *)fa->next) {
-						if (!fa->filter->copyProc)
-							fa->ForceNoDeinit();
 						delete fa;
 						fa = fa2;
 					}

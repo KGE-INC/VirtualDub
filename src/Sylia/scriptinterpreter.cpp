@@ -62,6 +62,7 @@ private:
 	int tokhold;
 	char **tokslit;
 	char szIdent[MAX_IDENT_CHARS+1];
+	VDScriptValue		mErrorObject;
 	vdfastvector<char> mError;
 
 	std::vector<VDScriptValue> mStack;
@@ -269,7 +270,7 @@ const char *VDScriptInterpreter::TranslateScriptError(const VDScriptError& cse) 
 
 		return mError.data();
 	case VDScriptError::MEMBER_NOT_FOUND:
-		sprintf(szError, "Member '%s' not found", szIdent);
+		sprintf(szError, "Class '%s' does not have a member called '%s'", mErrorObject.asObjectDef()->mpName, szIdent);
 		mError.assign(szError, szError + strlen(szError) + 1);
 		return mError.data();
 	case VDScriptError::VAR_NOT_FOUND:
@@ -365,10 +366,19 @@ void VDScriptInterpreter::ParseExpression() {
 			if (Token() != TOK_IDENT)
 				SCRIPT_ERROR(OBJECT_MEMBER_NAME_REQUIRED);
 
-			v = LookupObjectMember(v.asObjectDef(), v.asObjectPtr(), szIdent);
+			try {
+				VDScriptValue v2 = LookupObjectMember(v.asObjectDef(), v.asObjectPtr(), szIdent);
 
-			if (v.isVoid())
-				SCRIPT_ERROR(MEMBER_NOT_FOUND);
+				if (v2.isVoid()) {
+					mErrorObject = v;
+					SCRIPT_ERROR(MEMBER_NOT_FOUND);
+				}
+
+				v = v2;
+			} catch(const VDScriptError& e) {
+				mErrorObject = v;
+				throw;
+			}
 
 		} else if (t == '[') {	// array indexing operator (object, value -> value)
 			// Reduce lvalues to rvalues

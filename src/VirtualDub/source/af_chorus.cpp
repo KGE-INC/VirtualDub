@@ -188,7 +188,7 @@ extern const struct VDAudioFilterDefinition afilterDef_stereochorus = {
 	&VDAudioFilterBase::sVtbl,
 };
 
-extern const struct VDPluginInfo apluginDef_stereochorus = {
+extern const VDPluginInfo apluginDef_stereochorus = {
 	sizeof(VDPluginInfo),
 	L"stereo chorus",
 	NULL,

@@ -605,6 +605,24 @@ void VDSetLastLoadSavePath(long nKey, const wchar_t *path) {
 	}
 }
 
+const VDStringW VDGetLastLoadSavePath(long nKey) {
+	VDStringW result;
+
+	vdsynchronized(g_csFilespecMap) {
+		VDInitFilespecSystem();
+		
+		tFilespecMap::iterator it = g_pFilespecMap->find(nKey);
+
+		if (it != g_pFilespecMap->end()) {
+			FilespecEntry& fsent = (*it).second;
+
+			result = fsent.szFile;
+		}
+	}
+
+	return result;
+}
+
 void VDSetLastLoadSaveFileName(long nKey, const wchar_t *fileName) {
 	vdsynchronized(g_csFilespecMap) {
 		VDInitFilespecSystem();

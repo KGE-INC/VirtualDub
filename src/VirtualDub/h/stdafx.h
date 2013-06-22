@@ -26,6 +26,7 @@ static MSVC_C4786_Workaround g_VD_ShutUpYouStupidCompilerAbout255CharacterLimitO
 #endif
 
 #include <vd2/system/vdtypes.h>
+#include <vd2/system/vdstl.h>
 #include <vd2/system/math.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -56,6 +57,32 @@ static MSVC_C4786_Workaround g_VD_ShutUpYouStupidCompilerAbout255CharacterLimitO
 #pragma warning(disable: 4127)			// warning C4127: conditional expression is constant
 #pragma warning(disable: 4245)			// warning C4145: 'initializing': conversion from '' to '', signed/unsigned mismatch
 #pragma warning(disable: 4310)			// warning C4310: cast truncates constant value
+#endif
+
+#if defined(_DEBUG) || defined(_M_IX86)
+	#include <vd2/system/atomic.h>
+	#include <vd2/system/thread.h>
+	#include <vd2/system/refcount.h>
+	#include <vd2/system/vdalloc.h>
+	#include <vd2/system/w32assist.h>
+	#include <vd2/Dita/interface.h>
+	#include <vd2/Kasumi/pixmap.h>
+	#include <vd2/Kasumi/pixmapops.h>
+	#include <vd2/Kasumi/pixmaputils.h>
+	#include "AudioSource.h"
+	#include "VideoSource.h"
+	#include "InputFile.h"
+	#include "gui.h"
+	#include "misc.h"
+	#include "oshelper.h"
+	#include "project.h"
+	#include "capture.h"
+	#include "captureui.h"
+	#include "resource.h"
+	#include "prefs.h"
+	#include "command.h"
+	#include "Dub.h"
+	#include "DubOutput.h"
 #endif
 
 #endif

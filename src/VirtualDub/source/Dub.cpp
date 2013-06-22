@@ -165,6 +165,7 @@ DubOptions g_dubOpts = {
 
 	true,			// show status
 	false,			// move slider
+	100,			// run at 100%
 };
 
 static const int g_iPriorities[][2]={
@@ -377,6 +378,7 @@ public:
 	void SetStatusHandler(IDubStatusHandler *pdsh);
 	void SetPriority(int index);
 	void UpdateFrames();
+	void SetThrottleFactor(float throttleFactor);
 };
 
 
@@ -844,10 +846,6 @@ void Dubber::InitOutputFile() {
 
 			lVideoSizeEstimate = mpVideoCompressor->GetMaxOutputSize();
 		} else {
-			if (opt->video.mbUseSmartRendering) {
-				throw MyError("Cannot initialize smart rendering: No video codec is selected for compression.");
-			}
-
 			if (opt->video.mode < DubVideoOptions::M_FASTREPACK) {
 
 				if (vSrc->getImageFormat()->biCompression == 0xFFFFFFFF)
@@ -871,6 +869,10 @@ void Dubber::InitOutputFile() {
 							lVideoSizeEstimate = bytes;
 				}
 			} else {
+				if (opt->video.mbUseSmartRendering) {
+					throw MyError("Cannot initialize smart rendering: No video codec is selected for compression.");
+				}
+
 				if (opt->video.mode == DubVideoOptions::M_FULL) {
 					VDMakeBitmapFormatFromPixmapFormat(outputFormat, mpCompressorVideoFormat, outputFormatID, outputVariantID);
 				} else
@@ -1090,7 +1092,7 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 
 	// check the mode; if we're using DirectStreamCopy mode, we'll need to
 	// align the subset to keyframe boundaries!
-	if (!mVideoSources.empty() && opt->video.mode == DubVideoOptions::M_NONE && !opt->video.mbUseSmartRendering) {
+	if (!mVideoSources.empty() && opt->video.mode == DubVideoOptions::M_NONE) {
 		if (!(inputSubsetActive = inputSubsetAlloc = new FrameSubset()))
 			throw MyMemoryError();
 
@@ -1180,9 +1182,9 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 	int nVideoLagTimeline = 0;		// Frames that will be buffered in the timeline frame space (IVTC)
 
 	if (mbDoVideo && opt->video.mode >= DubVideoOptions::M_FULL) {
-		BITMAPINFOHEADER *bmih = vSrc->getDecompressedFormat();
+		const VDPixmap& px = vSrc->getTargetFormat();
 
-		filters.initLinearChain(&g_listFA, (Pixel *)(bmih+1), abs(bmih->biWidth), abs(bmih->biHeight), 0);
+		filters.initLinearChain(&g_listFA, (Pixel *)px.palette, px.w, px.h, 0);
 		
 		VBitmap *lastBitmap = filters.LastBitmap();
 
@@ -1291,7 +1293,7 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 	// initialize frame iterator
 
 	if (mbDoVideo) {
-		mVideoFrameMap.Init(mVideoSources, vInfo.start_src, vInfo.frameRateIn / vInfo.frameRateNoTelecine, inputSubsetActive, vInfo.end_dst, opt->video.mode == DubVideoOptions::M_NONE && !opt->video.mbUseSmartRendering);
+		mVideoFrameMap.Init(mVideoSources, vInfo.start_src, vInfo.frameRateIn / vInfo.frameRateNoTelecine, inputSubsetActive, vInfo.end_dst, opt->video.mode == DubVideoOptions::M_NONE);
 
 		FilterSystem *filtsysToCheck = NULL;
 
@@ -1299,7 +1301,7 @@ void Dubber::Init(IVDVideoSource *const *pVideoSources, uint32 nVideoSources, Au
 			filtsysToCheck = &filters;
 		}
 
-		mVideoFrameIterator.Init(mVideoSources, opt->video.mode == DubVideoOptions::M_NONE, opt->video.mbUseSmartRendering, filtsysToCheck);
+		mVideoFrameIterator.Init(mVideoSources, opt->video.mode == DubVideoOptions::M_NONE, opt->video.mode != DubVideoOptions::M_NONE && opt->video.mbUseSmartRendering, filtsysToCheck);
 	} else {
 		mInterleaver.EndStream(0);
 	}
@@ -1363,6 +1365,9 @@ void Dubber::Go(int iPriority) {
 		throw MyError("Couldn't start I/O thread");
 
 	SetThreadPriority(mpIOThread->getThreadHandle(), g_iPriorities[iPriority-1][1]);
+
+	// We need to make sure that 100% actually means 100%.
+	SetThrottleFactor((float)(opt->mThrottlePercent * 65536 / 100) / 65536.0f);
 
 	// Create status window during the dub.
 	if (pStatusHandler) {
@@ -1553,4 +1558,10 @@ void Dubber::UpdateFrames() {
 			mLastProcessingThreadCounter = 0;
 		}
 	}
+}
+
+void Dubber::SetThrottleFactor(float throttleFactor) {
+	mProcessThread.SetThrottle(throttleFactor);
+	if (mpIOThread)
+		mpIOThread->SetThrottle(throttleFactor);
 }

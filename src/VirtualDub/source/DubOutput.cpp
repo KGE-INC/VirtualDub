@@ -22,6 +22,7 @@
 #include "AVIOutput.h"
 #include "AVIOutputFile.h"
 #include "AVIOutputFLM.h"
+#include "AVIOutputGIF.h"
 #include "AVIOutputWAV.h"
 #include "AVIOutputRaw.h"
 #include "AVIOutputImages.h"
@@ -34,8 +35,6 @@
 extern "C" unsigned long version_num;
 extern uint32 VDPreferencesGetAVIAlignmentThreshold();
 extern void VDPreferencesGetAVIIndexingLimits(uint32& superindex, uint32& subindex);
-
-extern AVIOutput *VDCreateAVIOutputGIF();
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -496,6 +495,7 @@ bool VDAVIOutputFilmstripSystem::AcceptsAudio() {
 
 VDAVIOutputGIFSystem::VDAVIOutputGIFSystem(const wchar_t *filename)
 	: mFilename(filename)
+	, mLoopCount(0)
 {
 }
 
@@ -503,18 +503,23 @@ VDAVIOutputGIFSystem::~VDAVIOutputGIFSystem() {
 }
 
 IVDMediaOutput *VDAVIOutputGIFSystem::CreateSegment() {
-	vdautoptr<AVIOutput> pOutput(VDCreateAVIOutputGIF());
+	vdautoptr<IVDAVIOutputGIF> pOutput(VDCreateAVIOutputGIF());
 
+	pOutput->SetLoopCount(mLoopCount);
+
+	AVIOutput *pAVIOut = pOutput->AsAVIOutput();
 	if (!mVideoFormat.empty()) {
-		IVDMediaOutputStream *pOutputStream = pOutput->createVideoStream();
+		IVDMediaOutputStream *pOutputStream = pAVIOut->createVideoStream();
 		
 		pOutputStream->setFormat(&mVideoFormat[0], mVideoFormat.size());
 		pOutputStream->setStreamInfo(mVideoStreamInfo);
 	}
 
-	pOutput->init(mFilename.c_str());
+	pAVIOut->init(mFilename.c_str());
 
-	return pOutput.release();
+	pOutput.release();
+
+	return pAVIOut;
 }
 
 void VDAVIOutputGIFSystem::CloseSegment(IVDMediaOutput *pSegment, bool bLast) {

@@ -164,16 +164,78 @@ IDirect3DTexture9 *VDD3D9Texture::GetD3DTexture() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-static VDD3D9Manager g_VDDirect3D9;
+class VDD3D9SwapChain : public vdrefcounted<IVDD3D9SwapChain> {
+public:
+	VDD3D9SwapChain(IDirect3DSwapChain9 *pD3DSwapChain);
+	~VDD3D9SwapChain();
+
+	IDirect3DSwapChain9 *GetD3DSwapChain() const { return mpD3DSwapChain; }
+protected:
+	vdrefptr<IDirect3DSwapChain9> mpD3DSwapChain;
+};
+
+VDD3D9SwapChain::VDD3D9SwapChain(IDirect3DSwapChain9 *pD3DSwapChain)
+	: mpD3DSwapChain(pD3DSwapChain)
+{
+}
+
+VDD3D9SwapChain::~VDD3D9SwapChain() {
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+static VDCriticalSection g_csVDDirect3D9Managers;
+static vdlist<VDD3D9Manager> g_VDDirect3D9Managers;
 
 VDD3D9Manager *VDInitDirect3D9(VDD3D9Client *pClient) {
-	return g_VDDirect3D9.Attach(pClient) ? &g_VDDirect3D9 : NULL;
+	VDD3D9Manager *pMgr = NULL;
+	bool firstClient = false;
+
+	vdsynchronized(g_csVDDirect3D9Managers) {
+		vdlist<VDD3D9Manager>::iterator it(g_VDDirect3D9Managers.begin()), itEnd(g_VDDirect3D9Managers.end());
+
+		VDThreadID tid = VDGetCurrentThreadID();
+
+		for(; it != itEnd; ++it) {
+			VDD3D9Manager *mgr = *it;
+
+			if (mgr->GetThreadID() == tid) {
+				pMgr = mgr;
+				break;
+			}
+		}
+
+		if (!pMgr) {
+			pMgr = new_nothrow VDD3D9Manager;
+			if (!pMgr)
+				return NULL;
+
+			g_VDDirect3D9Managers.push_back(pMgr);
+			firstClient = true;
+		}
+	}
+
+	bool success = pMgr->Attach(pClient);
+
+	if (success)
+		return pMgr;
+
+	if (firstClient) {
+		vdsynchronized(g_csVDDirect3D9Managers) {
+			g_VDDirect3D9Managers.erase(pMgr);
+		}
+	}
+
+	return NULL;
 }
 
 void VDDeinitDirect3D9(VDD3D9Manager *p, VDD3D9Client *pClient) {
-	VDASSERT(p == &g_VDDirect3D9);
-
-	p->Detach(pClient);
+	if (p->Detach(pClient)) {
+		vdsynchronized(g_csVDDirect3D9Managers) {
+			g_VDDirect3D9Managers.erase(p);
+		}
+		delete p;
+	}
 }
 
 VDD3D9Manager::VDD3D9Manager()
@@ -188,6 +250,7 @@ VDD3D9Manager::VDD3D9Manager()
 	, mpD3DIB(NULL)
 	, mpD3DQuery(NULL)
 	, mpD3DVD(NULL)
+	, mpImplicitSwapChain(NULL)
 	, mRefCount(0)
 {
 }
@@ -205,8 +268,10 @@ bool VDD3D9Manager::Attach(VDD3D9Client *pClient) {
 
 	if (++mRefCount == 1)
 		bSuccess = Init();
-	else
+	else {
+		VDASSERT(VDGetCurrentThreadID() == mThreadID);
 		bSuccess = CheckDevice();
+	}
 
 	if (!bSuccess)
 		Detach(pClient);
@@ -214,13 +279,17 @@ bool VDD3D9Manager::Attach(VDD3D9Client *pClient) {
 	return bSuccess;
 }
 
-void VDD3D9Manager::Detach(VDD3D9Client *pClient) {
+bool VDD3D9Manager::Detach(VDD3D9Client *pClient) {
 	VDASSERT(mRefCount > 0);
 
 	mClients.erase(mClients.fast_find(pClient));
 
-	if (!--mRefCount)
+	if (!--mRefCount) {
 		Shutdown();
+		return true;
+	}
+
+	return false;
 }
 
 bool VDD3D9Manager::Init() {
@@ -244,6 +313,8 @@ bool VDD3D9Manager::Init() {
 		if (!sDevWndClass)
 			return false;
 	}
+
+	mThreadID = VDGetCurrentThreadID();
 
 	mhwndDevice = CreateWindow((LPCTSTR)sDevWndClass, "", WS_POPUP, 0, 0, 0, 0, NULL, NULL, hInst, NULL);
 	if (!mhwndDevice) {
@@ -277,16 +348,6 @@ bool VDD3D9Manager::Init() {
 	mPresentParms.SwapEffect		= D3DSWAPEFFECT_COPY;
 	// BackBufferFormat is set below.
 	mPresentParms.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
-//	mPresentParms.PresentationInterval = D3DPRESENT_INTERVAL_ONE;
-
-#if 1
-	mPresentParms.BackBufferWidth	= GetSystemMetrics(SM_CXMAXIMIZED);
-	mPresentParms.BackBufferHeight	= GetSystemMetrics(SM_CYMAXIMIZED);
-#else
-	mPresentParms.BackBufferWidth	= 1600;
-	mPresentParms.BackBufferHeight	= 1200;
-	mPresentParms.BackBufferCount	= 3;
-#endif
 
 	HRESULT hr;
 
@@ -323,6 +384,15 @@ bool VDD3D9Manager::Init() {
 		Shutdown();
 		return false;
 	}
+
+#if 1
+	mPresentParms.BackBufferWidth	= mode.Width;
+	mPresentParms.BackBufferHeight	= mode.Height;
+#else
+	mPresentParms.BackBufferWidth	= 1600;
+	mPresentParms.BackBufferHeight	= 1200;
+	mPresentParms.BackBufferCount	= 3;
+#endif
 
 	// Make sure we have at least X8R8G8B8 for a texture format
 	hr = mpD3D->CheckDeviceFormat(adapter, type, D3DFMT_X8R8G8B8, 0, D3DRTYPE_TEXTURE, D3DFMT_X8R8G8B8);
@@ -446,15 +516,40 @@ bool VDD3D9Manager::InitVRAMResources() {
 	}
 
 	// create flush event
-	hr = mpD3DDevice->CreateQuery(D3DQUERYTYPE_EVENT, NULL);
-	if (SUCCEEDED(hr)) {
-		hr = mpD3DDevice->CreateQuery(D3DQUERYTYPE_EVENT, &mpD3DQuery);
+	if (!mpD3DQuery) {
+		hr = mpD3DDevice->CreateQuery(D3DQUERYTYPE_EVENT, NULL);
+		if (SUCCEEDED(hr)) {
+			hr = mpD3DDevice->CreateQuery(D3DQUERYTYPE_EVENT, &mpD3DQuery);
+		}
+	}
+
+	// get implicit swap chain
+	if (!mpImplicitSwapChain) {
+		vdrefptr<IDirect3DSwapChain9> pD3DSwapChain;
+		hr = mpD3DDevice->GetSwapChain(0, ~pD3DSwapChain);
+		if (FAILED(hr)) {
+			VDDEBUG_D3D("VideoDisplay/DX9: Failed to obtain implicit swap chain.\n");
+			ShutdownVRAMResources();
+			return false;
+		}
+
+		mpImplicitSwapChain = new_nothrow VDD3D9SwapChain(pD3DSwapChain);
+		if (!mpImplicitSwapChain) {
+			VDDEBUG_D3D("VideoDisplay/DX9: Failed to obtain implicit swap chain.\n");
+			ShutdownVRAMResources();
+			return false;
+		}
+		mpImplicitSwapChain->AddRef();
 	}
 
 	return true;
 }
 
 void VDD3D9Manager::ShutdownVRAMResources() {
+	if (mpImplicitSwapChain) {
+		mpImplicitSwapChain->Release();
+		mpImplicitSwapChain = NULL;
+	}
 	if (mpD3DQuery) {
 		mpD3DQuery->Release();
 		mpD3DQuery = NULL;
@@ -703,6 +798,25 @@ bool VDD3D9Manager::EndScene() {
 	return true;
 }
 
+void VDD3D9Manager::Flush() {
+	if (mpD3DQuery) {
+		HRESULT hr = mpD3DQuery->Issue(D3DISSUE_END);
+		if (SUCCEEDED(hr)) {
+			mpD3DQuery->GetData(NULL, 0, D3DGETDATA_FLUSH);
+		}
+	}
+}
+
+void VDD3D9Manager::Finish() {
+	if (mpD3DQuery) {
+		HRESULT hr = mpD3DQuery->Issue(D3DISSUE_END);
+		if (SUCCEEDED(hr)) {
+			while(S_FALSE == mpD3DQuery->GetData(NULL, 0, D3DGETDATA_FLUSH))
+				::Sleep(1);
+		}
+	}
+}
+
 HRESULT VDD3D9Manager::DrawArrays(D3DPRIMITIVETYPE type, UINT vertStart, UINT primCount) {
 	HRESULT hr = mpD3DDevice->DrawPrimitive(type, mVertexBufferPt - mVertexBufferLockSize + vertStart, primCount);
 
@@ -909,3 +1023,225 @@ bool VDD3D9Manager::CreateSharedTexture(const char *name, SharedTextureFactory f
 	*ppTexture = pTexture.release();
 	return true;
 }
+
+bool VDD3D9Manager::CreateSwapChain(int width, int height, IVDD3D9SwapChain **ppSwapChain) {
+	D3DPRESENT_PARAMETERS pparms={};
+
+	pparms.Windowed			= TRUE;
+	pparms.SwapEffect		= D3DSWAPEFFECT_COPY;
+	pparms.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
+	pparms.BackBufferWidth	= width;
+	pparms.BackBufferHeight	= height;
+	pparms.BackBufferCount	= 1;
+	pparms.BackBufferFormat	= mPresentParms.BackBufferFormat;
+
+	vdrefptr<IDirect3DSwapChain9> pD3DSwapChain;
+	HRESULT hr = mpD3DDevice->CreateAdditionalSwapChain(&pparms, ~pD3DSwapChain);
+	if (FAILED(hr))
+		return false;
+
+	vdrefptr<VDD3D9SwapChain> pSwapChain(new_nothrow VDD3D9SwapChain(pD3DSwapChain));
+	if (!pSwapChain)
+		return false;
+
+	*ppSwapChain = pSwapChain.release();
+	return true;
+}
+
+void VDD3D9Manager::SetSwapChainActive(IVDD3D9SwapChain *pSwapChain) {
+	if (!pSwapChain)
+		pSwapChain = mpImplicitSwapChain;
+
+	IDirect3DSwapChain9 *pD3DSwapChain = static_cast<VDD3D9SwapChain *>(pSwapChain)->GetD3DSwapChain();
+
+	IDirect3DSurface9 *pD3DBackBuffer;
+	HRESULT hr = pD3DSwapChain->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &pD3DBackBuffer);
+	if (FAILED(hr))
+		return;
+
+	hr = mpD3DDevice->SetRenderTarget(0, pD3DBackBuffer);
+	pD3DBackBuffer->Release();
+}
+
+//extern FILE *loggf=fopen("e:\\blit.log", "w");
+
+HRESULT VDD3D9Manager::PresentSwapChain(IVDD3D9SwapChain *pSwapChain, const RECT *srcRect, HWND hwndDest, bool vsync, bool newframe, bool donotwait, float& syncDelta, VDD3DPresentHistory& history) {
+//		fprintf(loggf, "poll\n");
+	if (!mPresentParms.Windowed)
+		return S_OK;
+
+	if (!pSwapChain)
+		pSwapChain = mpImplicitSwapChain;
+
+	IDirect3DSwapChain9 *pD3DSwapChain = static_cast<VDD3D9SwapChain *>(pSwapChain)->GetD3DSwapChain();
+	HRESULT hr;
+
+	if (!vsync || !(mDevCaps.Caps & D3DCAPS_READ_SCANLINE)) {
+		if (!newframe)
+			return S_OK;
+
+		syncDelta = 0.0f;
+
+		hr = pD3DSwapChain->Present(srcRect, NULL, hwndDest, NULL, 0);
+		history.mbPresentPending = false;
+		return hr;
+	}
+
+	// Okay, now we know we're doing vsync.
+	if (newframe && !history.mbPresentPending) {
+		RECT r;
+		if (!GetWindowRect(hwndDest, &r))
+			return E_FAIL;
+
+		int top = 0;
+		int bottom = GetSystemMetrics(SM_CYSCREEN);
+
+		// GetMonitorInfo() requires Windows 98. We might never fail on this because
+		// I think DirectX 9.0c requires 98+, but we have to dynamically link anyway
+		// to avoid a startup link failure on 95.
+		typedef BOOL (APIENTRY *tpGetMonitorInfo)(HMONITOR mon, LPMONITORINFO lpmi);
+		static tpGetMonitorInfo spGetMonitorInfo = (tpGetMonitorInfo)GetProcAddress(GetModuleHandle("user32"), "GetMonitorInfo");
+
+		if (spGetMonitorInfo) {
+			HMONITOR hmon = mpD3D->GetAdapterMonitor(mAdapter);
+			MONITORINFO monInfo = {sizeof(MONITORINFO)};
+			if (spGetMonitorInfo(hmon, &monInfo)) {
+				top = monInfo.rcMonitor.top;
+				bottom = monInfo.rcMonitor.bottom;
+			}
+		}
+
+		if (r.top < top)
+			r.top = top;
+		if (r.bottom > bottom)
+			r.bottom = bottom;
+
+		r.top -= top;
+		r.bottom -= top;
+
+		history.mScanTop = r.top;
+		history.mScanBottom = r.bottom;
+
+		newframe = false;
+		history.mbPresentPending = true;
+		history.mbPresentLoopStarted = false;
+		history.mbPresentBlitStarted = false;
+
+		history.mMaxScanline = 0;
+		history.mFirstScanline = -1;
+		history.mPresentStartTime = VDGetPreciseTick();
+	}
+
+	if (!history.mbPresentPending)
+		return S_OK;
+
+	// Poll raster status, and wait until we can safely blit. We assume that the
+	// blit can outrace the beam. 
+	D3DRASTER_STATUS rastStatus;
+
+	for(;;) {
+		hr = pD3DSwapChain->GetRasterStatus(&rastStatus);
+		if (FAILED(hr))
+			return hr;
+
+		if (history.mbPresentBlitStarted)
+			break;
+
+		if (history.mFirstScanline < 0)
+			history.mFirstScanline = history.mLastScanline = rastStatus.InVBlank ? 0 : (int)rastStatus.ScanLine;
+
+		if (rastStatus.InVBlank)
+			rastStatus.ScanLine = 0;
+
+		sint32 y1 = (sint32)history.mLastScanline;
+		sint32 y2 = (sint32)rastStatus.ScanLine;
+
+		history.mLastScanline = rastStatus.ScanLine;
+
+		sint32 yt = (sint32)history.mScanlineTarget;
+
+		if (y1 <= y2) {
+			if (y1 <= yt && yt <= y2)
+				break;
+		} else {
+			if (y1 >= yt || yt >= y2)
+				break;
+		}
+
+		// We're in the danger zone. If the delta is greater than one tenth of the
+		// display, do a sleep.
+		if (donotwait)
+			return S_FALSE;
+
+		::Sleep(1);
+	}
+
+	history.mbPresentBlitStarted = true;
+
+	if (donotwait) {
+		hr = pD3DSwapChain->Present(srcRect, NULL, hwndDest, NULL, D3DPRESENT_DONOTWAIT);
+
+		if (hr == D3DERR_WASSTILLDRAWING)
+			return S_FALSE;
+	} else
+		hr = pD3DSwapChain->Present(srcRect, NULL, hwndDest, NULL, 0);
+
+	history.mbPresentPending = false;
+	if (FAILED(hr))
+		return hr;
+
+	D3DRASTER_STATUS rastStatus2;
+	hr = pD3DSwapChain->GetRasterStatus(&rastStatus2);
+	syncDelta = 0.0f;
+	if (SUCCEEDED(hr)) {
+		if (rastStatus2.InVBlank)
+			rastStatus2.ScanLine = 0;
+
+		float yf = ((float)rastStatus2.ScanLine - (float)history.mScanTop) / ((float)history.mScanBottom - (float)history.mScanTop);
+
+		yf -= 0.2f;
+
+		if (yf < 0.0f)
+			yf = 0.0f;
+		if (yf > 1.0f)
+			yf = 1.0f;
+
+		if (yf > 0.5f)
+			yf -= 1.0f;
+
+		syncDelta = yf;
+
+		history.mScanlineTarget -= yf * 15.0f;
+		if (history.mScanlineTarget < 0.0f)
+			history.mScanlineTarget += (float)mDisplayMode.Height;
+		else if (history.mScanlineTarget >= (float)mDisplayMode.Height)
+			history.mScanlineTarget -= (float)mDisplayMode.Height;
+
+		float success = rastStatus2.InVBlank || (int)rastStatus2.ScanLine <= history.mScanTop || (int)rastStatus2.ScanLine >= history.mScanBottom ? 1.0f : 0.0f;
+
+		int zone = 0;
+		if (!rastStatus.InVBlank)
+			zone = ((int)rastStatus.ScanLine * 16) / (int)mDisplayMode.Height;
+
+		for(int i=0; i<17; ++i) {
+			if (i != zone)
+				history.mAttemptProb[i] *= 0.99f;
+		}
+
+		history.mAttemptProb[zone] += (1.0f - history.mAttemptProb[zone]) * 0.01f;
+		history.mSuccessProb[zone] += (success - history.mSuccessProb[zone]) * 0.01f;
+
+		if (rastStatus.InVBlank || (int)rastStatus.ScanLine < history.mScanTop) {
+			history.mVBlankSuccess += (success - history.mVBlankSuccess) * 0.01f;
+		}
+
+		if (!rastStatus.InVBlank && !rastStatus2.InVBlank && rastStatus2.ScanLine > rastStatus.ScanLine) {
+			float delta = (float)(int)(rastStatus2.ScanLine - rastStatus.ScanLine);
+
+			history.mPresentDelay += (delta - history.mPresentDelay) * 0.01f;
+		}
+	}
+
+	return hr;
+}
+

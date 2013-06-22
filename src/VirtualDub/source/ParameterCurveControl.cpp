@@ -122,6 +122,7 @@ protected:
 	int					mFontHeight;
 
 	HPEN				mhpenGridLines;
+	HPEN				mhpenGridLines2;
 	HPEN				mhpenCurve;
 	HPEN				mhpenLine;
 	HPEN				mhpenEndLine;
@@ -171,6 +172,7 @@ VDParameterCurveControlW32::VDParameterCurveControlW32(HWND hwnd)
 	, mbTrackingMouse(false)
 	, mStatus(kStatus_Nothing)
 	, mhpenGridLines(CreatePen(PS_SOLID, 0, RGB(64, 64, 64)))
+	, mhpenGridLines2(CreatePen(PS_SOLID, 0, RGB(8, 8, 8)))
 	, mhpenCurve(CreatePen(PS_SOLID, 0, RGB(255,255,255)))
 	, mhpenLine(CreatePen(PS_SOLID, 0, RGB(128,255,192)))
 	, mhpenEndLine(CreatePen(PS_SOLID, 0, RGB(224,224,128)))
@@ -205,6 +207,8 @@ VDParameterCurveControlW32::~VDParameterCurveControlW32() {
 		DeleteObject(mhpenLine);
 	if (mhpenEndLine)
 		DeleteObject(mhpenEndLine);
+	if (mhpenGridLines2)
+		DeleteObject(mhpenGridLines2);
 	if (mhpenGridLines)
 		DeleteObject(mhpenGridLines);
 	if (mhpenCurrentPos)
@@ -531,7 +535,7 @@ void VDParameterCurveControlW32::OnPaint() {
 			ix2 += 4;
 			ix2 -= ix2 % 5;
 
-			SelectObject(hdc, mhpenGridLines);
+			SelectObject(hdc, mhpenGridLines2);
 			SelectObject(hdc, mhfont);
 
 			HBRUSH hBackFill = (HBRUSH)GetStockObject(BLACK_BRUSH);
@@ -544,7 +548,10 @@ void VDParameterCurveControlW32::OnPaint() {
 			int sy1 = CurveToScreenY(1.0);
 
 			RECT rFill = {r.right, r.top, r.right, r.right};
-			for(VDPosition ix=ix2-5; ix>=ix1; ix -= 5) {
+			int offset = (int)((ix2-1) % 5);
+			if (offset < 0)
+				offset += 5;
+			for(VDPosition ix=ix2-1; ix>=ix1; --ix) {
 				int sx = CurveToScreenX((double)ix);
 
 				if (sx+1 < rFill.right) {
@@ -552,14 +559,23 @@ void VDParameterCurveControlW32::OnPaint() {
 					FillRect(hdc, &rFill, hBackFill);
 				}
 
-				MoveToEx(hdc, sx, r.top, NULL);
-				LineTo(hdc, sx, r.bottom);
+				if (offset) {
+					MoveToEx(hdc, sx, r.top, NULL);
+					LineTo(hdc, sx, r.bottom);
+				} else {
+					SelectObject(hdc, mhpenGridLines);
+					MoveToEx(hdc, sx, r.top, NULL);
+					LineTo(hdc, sx, r.bottom);
+					SelectObject(hdc, mhpenGridLines2);
 
-				wchar_t buf[64];
-				swprintf(buf, 64, L"%lld", (long long)ix);
-				ExtTextOutW(hdc, sx+4, sy0+4, 0, NULL, buf, wcslen(buf), NULL);
+					wchar_t buf[64];
+					swprintf(buf, 64, L"%lld", (long long)ix);
+					ExtTextOutW(hdc, sx+4, sy0+4, 0, NULL, buf, wcslen(buf), NULL);
+				}
 
 				rFill.right = sx;
+				if (--offset < 0)
+					offset += 5;
 			}
 
 			if (rFill.right > r.left) {
@@ -568,6 +584,7 @@ void VDParameterCurveControlW32::OnPaint() {
 			}
 
 			// draw y=0 and y=1 lines
+			SelectObject(hdc, mhpenGridLines);
 			MoveToEx(hdc, r.left, sy0, NULL);
 			LineTo(hdc, r.right, sy0);
 

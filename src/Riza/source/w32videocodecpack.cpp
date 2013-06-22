@@ -114,6 +114,7 @@ private:
 	long		lSlopSpace;
 	long		lKeySlopSpace;
 
+	bool		mbKeyframeOnly;
 	bool		mbCompressionRestarted;
 
 	// crunch emulation
@@ -208,7 +209,9 @@ void VDVideoCompressorVCM::Start(const void *inputFormat, const void *outputForm
 
 	this->dwFlags = info.dwFlags;
 
+	mbKeyframeOnly = true;
 	if (info.dwFlags & VIDCF_TEMPORAL) {
+		mbKeyframeOnly = false;
 		if (!(info.dwFlags & VIDCF_FASTTEMPORALC)) {
 			// Allocate backbuffer
 
@@ -434,14 +437,16 @@ bool VDVideoCompressorVCM::CompressFrame(void *dst, const void *src, bool& keyfr
 	// the last emitted keyframe, since the compressor can opt to
 	// make keyframes on its own.
 
-	if (!lKeyRate) {
-		if (lFrameNum)
-			dwFlagsIn = 0;
-	} else {
-		if (--lKeyRateCounter)
-			dwFlagsIn = 0;
-		else
-			lKeyRateCounter = lKeyRate;
+	if (!mbKeyframeOnly) {
+		if (!lKeyRate) {
+			if (lFrameNum)
+				dwFlagsIn = 0;
+		} else {
+			if (--lKeyRateCounter)
+				dwFlagsIn = 0;
+			else
+				lKeyRateCounter = lKeyRate;
+		}
 	}
 
 	// Figure out how much space to give the compressor, if we are using

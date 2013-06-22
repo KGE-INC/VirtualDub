@@ -50,6 +50,7 @@ IVDUIContext *VDGetUIContext();
 const VDStringW VDGetLoadFileName(long nKey, VDGUIHandle ctxParent, const wchar_t *pszTitle, const wchar_t *pszFilters, const wchar_t *pszExt, const VDFileDialogOption *pOptions = NULL, int *pOptVals = NULL);
 const VDStringW VDGetSaveFileName(long nKey, VDGUIHandle ctxParent, const wchar_t *pszTitle, const wchar_t *pszFilters, const wchar_t *pszExt, const VDFileDialogOption *pOptions = NULL, int *pOptVals = NULL);
 void VDSetLastLoadSavePath(long nKey, const wchar_t *path);
+const VDStringW VDGetLastLoadSavePath(long nKey);
 void VDSetLastLoadSaveFileName(long nKey, const wchar_t *fileName);
 
 const VDStringW VDGetDirectory(long nKey, VDGUIHandle ctxParent, const wchar_t *pszTitle);

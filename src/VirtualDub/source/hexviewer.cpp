@@ -29,6 +29,7 @@
 #include "resource.h"
 #include "oshelper.h"
 #include "gui.h"
+#include "misc.h"
 #include <vd2/system/error.h>
 #include <vd2/system/list.h>
 #include <vd2/system/strutil.h>
@@ -47,10 +48,6 @@ extern const char szHexViewerClassName[]="birdyHexViewer";
 static const char g_szHexWarning[]="Hex editor warning";
 
 static const char hexdig[16]={'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
-
-static bool isValidFOURCC(unsigned long l) {
-	return isprint(l>>24) && isprint((l>>16)&0xff) && isprint((l>>8)&0xff) && isprint(l&0xff);
-}
 
 static const struct RIFFFieldInfo {
 	int offset;

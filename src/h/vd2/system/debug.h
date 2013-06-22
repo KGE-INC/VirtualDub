@@ -53,6 +53,19 @@ struct VDSilentExternalCodeBracket {
 	}
 };
 
+struct VDExternalCodeBracketLocation {
+	VDExternalCodeBracketLocation(const wchar_t *pContext, const char *file, const int line)
+		: mpContext(pContext)
+		, mpFile(file)
+		, mLine(line)
+	{
+	}
+
+	const wchar_t *mpContext;
+	const char *mpFile;
+	const int mLine;	
+};
+
 struct VDExternalCodeBracket {
 	VDExternalCodeBracket(const wchar_t *pContext, const char *file, const int line)
 		: mpContext(pContext)
@@ -62,9 +75,18 @@ struct VDExternalCodeBracket {
 		VDPreCheckExternalCodeCall(file, line);
 	}
 
+	VDExternalCodeBracket(const VDExternalCodeBracketLocation& loc)
+		: mpContext(loc.mpContext)
+		, mpFile(loc.mpFile)
+		, mLine(loc.mLine)
+	{
+	}
+
 	~VDExternalCodeBracket() {
 		VDPostCheckExternalCodeCall(mpContext, mpFile, mLine);
 	}
+
+	operator bool() const { return false; }
 
 	const wchar_t *mpContext;
 	const char *mpFile;
