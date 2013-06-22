@@ -852,6 +852,7 @@ VDAudioSourcePlugin::VDAudioSourcePlugin(IVDXAudioSource *pAS, VDInputDriverCont
 		}
 		memcpy(allocFormat(len), format, len);
 	} else {
+		throw MyError("The audio stream has a custom format that cannot be supported.");
 	}
 
 	streamInfo.fccType			= streamtypeAUDIO;
@@ -867,7 +868,7 @@ VDAudioSourcePlugin::VDAudioSourcePlugin(IVDXAudioSource *pAS, VDInputDriverCont
 	streamInfo.dwInitialFrames	= 0;
 	streamInfo.dwSuggestedBufferSize = 0;
 	streamInfo.dwQuality		= (DWORD)-1;
-	streamInfo.dwSampleSize		= 0;
+	streamInfo.dwSampleSize		= ((const WAVEFORMATEX *)format)->nBlockAlign;
 	streamInfo.rcFrame.left		= 0;
 	streamInfo.rcFrame.top		= 0;
 	streamInfo.rcFrame.right	= 0;
@@ -1019,8 +1020,13 @@ void VDInputFilePlugin::Init(const wchar_t *szFile) {
 	vdwithinputplugin(mContext) {
 		mpXObject->GetAudioSource(0, ~pAS);
 	}
-	if (pAS)
-		audioSrc = new VDAudioSourcePlugin(pAS, &mContext);
+
+	try {
+		if (pAS)
+			audioSrc = new VDAudioSourcePlugin(pAS, &mContext);
+	} catch(const MyError&) {
+#pragma vdpragma_TODO("try/catch needs to be removed in 1.7.X")
+	}
 }
 
 bool VDInputFilePlugin::Append(const wchar_t *szFile) {

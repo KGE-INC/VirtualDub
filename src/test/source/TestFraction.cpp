@@ -1,3 +1,4 @@
+#include <math.h>
 #include <vd2/system/Fraction.h>
 #include "test.h"
 
@@ -91,6 +92,31 @@ DEFINE_TEST(Fraction) {
 
 	frac = VDFraction(16, 15);
 	TEST_ASSERT(frac * frac * frac * frac * frac * frac * frac * frac == VDFraction(2569952127, 1533540481));
+
+	// check conversion from double
+	TEST_ASSERT(0.0 == VDFraction(0.0).asDouble());
+	TEST_ASSERT(1.0 / 4294967295.0 == VDFraction(1.0 / 4294967295.0).asDouble());
+	TEST_ASSERT(4294967295.0 == VDFraction(4294967295.0).asDouble());
+	for(int i=-31; i<=31; ++i) {
+		double x = ldexp(1.0, i);
+		VDFraction frac = VDFraction(x);
+		double y = frac.asDouble();
+		TEST_ASSERT(x == y);
+	}
+
+	double epsilon = ldexp(1.0, -51);
+	for(int i=0; i<100000; ++i) {
+		unsigned n = rand() ^ (rand() << 10) ^ (rand() << 20);
+		unsigned d = rand() ^ (rand() << 10) ^ (rand() << 20);
+
+		if (!d)
+			continue;
+
+		double x = (double)n / (double)d;
+		VDFraction frac = VDFraction(x);
+		double y = frac.asDouble();
+		TEST_ASSERT(fabs(x - y) < x * epsilon);
+	}
 
 	return 0;
 }

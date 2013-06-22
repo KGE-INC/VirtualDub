@@ -783,8 +783,10 @@ bool VDAVIOutputSegmented::init(const wchar_t *szFile) {
 }
 
 void VDAVIOutputSegmented::finalize() {
-	mpFirstAudioStream->finish();
-	mpFirstVideoStream->finish();
+	if (mpFirstAudioStream)
+		mpFirstAudioStream->finish();
+	if (mpFirstVideoStream)
+		mpFirstVideoStream->finish();
 
 	while(mNextAction != VDStreamInterleaver::kActionFinish)
 		Update();

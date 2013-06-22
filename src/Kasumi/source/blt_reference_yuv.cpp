@@ -1192,7 +1192,7 @@ namespace {
 		case -1:
 			vfunc = vert_compress2x_centered;
 			winsize = 4;
-			winposnext = 0x300;
+			winposnext = 0x200;
 			winstep = 0x200;
 			break;
 		case -2:
@@ -1236,11 +1236,11 @@ namespace {
 
 				window[winoffset] = window[winoffset + winsize] = srcrow;
 			}
-			winposnext += winstep;
 
 			if (vfunc)
-				vfunc(dst, window + ((winpos-1) & (winsize-1)), dstw, winposnext & 255);
+				vfunc(dst, window + (winpos & (winsize-1)), dstw, winposnext & 255);
 
+			winposnext += winstep;
 			vdptrstep(dst, dstpitch);
 		} while(--dsth);
 	 }

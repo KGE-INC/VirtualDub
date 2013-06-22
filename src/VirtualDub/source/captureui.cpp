@@ -2496,7 +2496,12 @@ LRESULT VDCaptureProjectUI::MainWndProc(UINT msg, WPARAM wParam, LPARAM lParam) 
 		case WM_HOTKEY:
 			if (wParam == kVDHotKeyIdCaptureStart) {
 				mbCaptureIsTest = false;
-				mpProject->Capture(false);
+
+				try {
+					mpProject->Capture(false);
+				} catch(const MyError& e) {
+					e.post((HWND)mhwnd, "Capture error");
+				}
 			}
 			break;
     }

@@ -510,7 +510,7 @@ void InitStreamValuesStatic(DubVideoStreamInfo& vInfo, DubAudioStreamInfo& aInfo
 		if (opt->video.mFrameRateAdjustLo == 0) {
 			if (opt->video.mFrameRateAdjustHi == DubVideoOptions::kFrameRateAdjustSameLength) {
 				if (audio && audio->getLength())
-					framerate = VDFraction::reduce64(pVideoStream->getLength() * (sint64)1000, audio->samplesToMs(audio->getLength()));
+					framerate = VDFraction((double)pVideoStream->getLength() * audio->getRate().asDouble() / audio->getLength());
 			}
 		} else
 			framerate = VDFraction(opt->video.mFrameRateAdjustHi, opt->video.mFrameRateAdjustLo);

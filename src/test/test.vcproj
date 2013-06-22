@@ -424,6 +424,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\source\test.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\source\TestAudioConvert.cpp"
 				>
 			</File>

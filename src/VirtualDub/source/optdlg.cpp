@@ -790,6 +790,11 @@ INT_PTR VDDialogVideoFrameRateW32::DlgProc(UINT message, WPARAM wParam, LPARAM l
 						}
 
 						newTarget = VDFraction((uint32)(0.5 + newFR * 10000.0), 10000);
+						if (!newTarget.getHi()) {
+							SetFocus(GetDlgItem(mhdlg, IDC_FRAMERATE));
+							MessageBeep(MB_ICONQUESTION);
+							return FALSE;
+						}
 
 						newFRD = 1;
 					} else if (IsDlgButtonChecked(mhdlg, IDC_DECIMATE_N)) {
@@ -826,6 +831,9 @@ INT_PTR VDDialogVideoFrameRateW32::DlgProc(UINT message, WPARAM wParam, LPARAM l
 						} else if (!fr.Parse(buf) || (double)fr >= 1000000.0) {
 							failed = true;
 						}
+
+						if (fr.getHi() == 0)
+							failed = true;
 
 						if (failed) {
 							SetFocus(GetDlgItem(mhdlg, IDC_FRAMERATE));
@@ -925,7 +933,8 @@ void VDDialogVideoFrameRateW32::ReinitDialog() {
 		SetDlgItemText(mhdlg, IDC_FRAMERATE_NOCHANGE, buf);
 
 		if (mpAudio && mpAudio->getLength()) {
-			sprintf(buf, "(%.3f fps)", (mpVideo->getLength()*1000.0) / mpAudio->samplesToMs(mpAudio->getLength()));
+			VDFraction framerate = VDFraction((double)mpVideo->getLength() * mpAudio->getRate().asDouble() / mpAudio->getLength());
+			sprintf(buf, "(%.3f fps)", framerate.asDouble());
 			SetDlgItemText(mhdlg, IDC_FRAMERATE_SAMELENGTH_VALUE, buf);
 		} else
 			EnableWindow(GetDlgItem(mhdlg, IDC_FRAMERATE_SAMELENGTH), FALSE);

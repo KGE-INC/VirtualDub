@@ -1,6 +1,21 @@
 VirtualDub change log
 
-Build %build% (1.7.6, stable): [%date%]
+Build %build% (1.7.7, stable): [%date%]
+   [bugs fixed]
+   * Improved accuracy of "set so audio and video durations match" for short clips.
+   * Fixed vertical chroma positioning errors when converting to 4:2:0 or 4:1:0 YCbCr.
+   * PluginSDK: Direct stream copy from a plugin audio stream caused dwStreamSize in the AVI to be set incorrectly.
+   * PluginSDK: Fixed crash when using plugin to load a file with an audio stream that isn't AVI compatible.
+   * Capture: When "wait for OK" was enabled with a DirectShow driver, time spent in the dialog was counted against a time stop condition.
+   * Capture: Fixed crash when an error occurs while starting capture with a custom hotkey.
+
+   [regressions fixed]
+   * "Save segmented AVI" no longer crashes when only video is enabled.
+   * Prohibit zero for frame rate adjustment.
+   * Filters: The error return from runProc is ignored again for compatibility with earlier versions of VirtualDub; this fixes some video filters that broke in the 1.7.x series.
+   * D3D: Fixed a display change related crash.
+
+Build 28292 (1.7.6, stable): [October 13, 2007]
    [bugs fixed]
    * Cancelling the mode selection dialog for "create test video" didn't cancel the open.
    * IVTC now works when the video format is non-RGB.

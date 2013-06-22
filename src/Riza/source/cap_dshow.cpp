@@ -2967,6 +2967,10 @@ bool VDCaptureDriverDS::CaptureStart() {
 		HRESULT hr = mpGraphControl->Pause();
 
 		if (SUCCEEDED(hr) && (!mpCB || mpCB->CapEvent(kEventPreroll, 0))) {
+
+			// reset capture start time in case there was a preroll dialog
+			mCaptureStart = VDGetAccurateTick();
+
 			bool success = false;
 			if (mpCB) {
 				try {

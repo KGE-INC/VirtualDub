@@ -34,16 +34,19 @@ VDFraction::VDFraction(double d) {
 	int xp;
 	double mant = frexp(d, &xp);
 
-	if (xp >= 31) {
+	if (xp >= 33) {
 		hi = 0xFFFFFFFF;
 		lo = 1;
-	} else if (xp < -32) {
+	} else if (xp < -31) {
 		hi = 0;
 		lo = 1;
 	} else if (xp >= 0) {
 		*this = reduce((uint64)(0.5 + ldexp(mant, 62)), 1i64<<(62-xp));
 	} else {
-		*this = reduce((uint64)(0.5 + ldexp(mant, xp+62)), 1i64<<62);
+		// This is not quite accurate for very tiny numbers.
+		VDFraction t(1.0 / d);
+		lo = t.hi;
+		hi = t.lo;
 	}
 }
 

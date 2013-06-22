@@ -1303,8 +1303,11 @@ HRESULT VDD3D9Manager::PresentSwapChain(IVDD3D9SwapChain *pSwapChain, const RECT
 	if (!mPresentParms.Windowed)
 		return S_OK;
 
-	if (!pSwapChain)
+	if (!pSwapChain) {
 		pSwapChain = mpImplicitSwapChain;
+		if (!pSwapChain)
+			return E_FAIL;
+	}
 
 	IDirect3DSwapChain9 *pD3DSwapChain = static_cast<VDD3D9SwapChain *>(pSwapChain)->GetD3DSwapChain();
 	HRESULT hr;

@@ -11,6 +11,8 @@ extern void AddTest(TestFn, const char *);
 
 typedef MyError AssertionException;
 
-#define TEST_ASSERT(condition) if ((condition)); else throw AssertionException("Test assertion failed: " #condition)
+bool ShouldBreak();
+
+#define TEST_ASSERT(condition) if (!(condition)) { ShouldBreak() ? __debugbreak() : throw AssertionException("Test assertion failed: " #condition); volatile int _x = 0; } else ((void)0)
 
 #endif

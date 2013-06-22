@@ -593,8 +593,10 @@ bool FilterSystem::RunFilters(const FilterStateInfo& fsi, FilterInstance *pfiSto
 			try {
 				vdprotected1("running filter \"%s\"", const char *, fa->filter->name) {
 					VDExternalCodeBracket bracket(fa->mFilterName.c_str(), __FILE__, __LINE__);
-					if (fa->filter->runProc(fa, &g_filterFuncs))
-						throw MyError("An error occurred during processing.");
+
+					// Deliberately ignore the return code. It was supposed to be an error value,
+					// but earlier versions didn't check it and logoaway returns true in some cases.
+					fa->filter->runProc(fa, &g_filterFuncs);
 				}
 			} catch(const MyError& e) {
 				dwFlags |= FILTERS_ERROR;
