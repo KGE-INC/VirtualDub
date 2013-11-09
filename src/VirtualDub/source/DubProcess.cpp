@@ -163,6 +163,12 @@ void VDDubProcessThread::SetVideoRequestQueue(VDDubFrameRequestQueue *q) {
 	mVideoProcessor.SetVideoRequestQueue(q);
 }
 
+void VDDubProcessThread::SetPriority(int priority) {
+	ThreadSetPriority(priority);
+
+	mVideoProcessor.SetPriority(priority);
+}
+
 void VDDubProcessThread::Init(const DubOptions& opts, const VDRenderFrameMap *frameMap, DubVideoStreamInfo *pvsi, IVDDubberOutputSystem *pOutputSystem, AVIPipe *pVideoPipe, VDAudioPipeline *pAudioPipe, VDStreamInterleaver *pStreamInterleaver) {
 	opt = &opts;
 	mpVInfo = pvsi;

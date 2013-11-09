@@ -35,6 +35,8 @@ void VDSetDataPath(const wchar_t *path);
 const wchar_t *VDGetDataPath();
 VDStringW VDGetLocalAppDataPath();
 
+void VDCopyTextToClipboard(const wchar_t *s);
+
 // Creates a 32-bit signature from the current date, time, and process ID. Not
 // guaranteed to be unique, but reasonably non-conflicting.
 uint32 VDCreateAutoSaveSignature();

@@ -735,8 +735,12 @@ void VDCaptureDriverScreen::DisplayDriverDialog(DriverDialog dlg) {
 }
 
 bool VDCaptureDriverScreen::CaptureStart() {
-	if (!mpGrabber)
-		return false;
+	if (!mpGrabber) {
+		// Okay, if for some reason we couldn't init the grabber, we try one last ditch attempt.
+		if (!InitVideoBuffer()) {
+			throw MyError("Unable to initialize screen capture. Check settings under Video Source.");
+		}
+	}
 
 	ShutdownWaveCapture();
 
@@ -1323,7 +1327,15 @@ LRESULT CALLBACK VDCaptureDriverScreen::StaticWndProc(HWND hwnd, UINT msg, WPARA
 				VDCaptureDriverScreen *pThis = (VDCaptureDriverScreen *)GetWindowLongPtr(hwnd, 0);
 				if (pThis->mbCaptureFramePending && pThis->mbCapturing) {
 					pThis->mbCaptureFramePending = false;
-					pThis->DoFrame();
+
+					try {
+						pThis->DoFrame();
+					} catch(MyError& e) {
+						if (pThis->mCaptureError.empty())
+							pThis->mCaptureError.TransferFrom(e);
+
+						pThis->CaptureAbort();
+					}
 				}
 			}
 			return 0;
@@ -1367,7 +1379,12 @@ LRESULT CALLBACK VDCaptureDriverScreen::StaticWndProc(HWND hwnd, UINT msg, WPARA
 				if (wParam == kPreviewTimerID) {
 					if (!pThis->mbCapturing && pThis->mpGrabber) {
 						pThis->UpdateTracking();
-						pThis->mpGrabber->AcquireFrame(pThis->mDisplayMode == kDisplayAnalyze);
+
+						try {
+							pThis->mpGrabber->AcquireFrame(pThis->mDisplayMode == kDisplayAnalyze);
+						} catch(const MyError&) {
+							// eat the error for preview :-/
+						}
 					}
 				} else if (wParam == kResponsivenessTimerID)
 					pThis->mResponsivenessCounter = GetTickCount();

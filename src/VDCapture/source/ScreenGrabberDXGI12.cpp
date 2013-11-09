@@ -3,6 +3,7 @@
 
 #include <math.h>
 #include <vd2/system/binary.h>
+#include <vd2/system/error.h>
 #include <vd2/system/math.h>
 #include <vd2/system/refcount.h>
 #include <vd2/system/thunk.h>
@@ -75,7 +76,6 @@ VDScreenGrabberDXGI12::VDScreenGrabberDXGI12()
 	, mpPointerConstBuf(NULL)
 	, mpPointerBlendState(NULL)
 	, mpPointerMaskBlendState(NULL)
-	, mbPointerImageDirty(false)
 	, mpPointerVS(NULL)
 	, mpPointerPSBlend(NULL)
 	, mpPointerPSMaskA0(NULL)
@@ -232,8 +232,8 @@ bool VDScreenGrabberDXGI12::AcquireFrame(bool dispatch) {
 	DXGI_OUTDUPL_FRAME_INFO frameInfo = {};
 
 #if !WIN7_TEST
-	IDXGIResource *pResource;
-	HRESULT hr = mpOutDup->AcquireNextFrame(0, &frameInfo, &pResource);
+	vdrefptr<IDXGIResource> pResource;
+	HRESULT hr = mpOutDup->AcquireNextFrame(0, &frameInfo, ~pResource);
 
 	QueryPerformanceCounter(&frameInfo.LastPresentTime);
 
@@ -255,59 +255,62 @@ bool VDScreenGrabberDXGI12::AcquireFrame(bool dispatch) {
 	QueryPerformanceCounter(&frameInfo.LastPresentTime);
 #endif
 
-	if (frameInfo.LastMouseUpdateTime.QuadPart) {
-		mPointerX = frameInfo.PointerPosition.Position.x;
-		mPointerY = frameInfo.PointerPosition.Position.y;
-		mbPointerVisible = frameInfo.PointerPosition.Visible != 0;
-	}
+	try {
+		if (frameInfo.LastMouseUpdateTime.QuadPart) {
+			mPointerX = frameInfo.PointerPosition.Position.x;
+			mPointerY = frameInfo.PointerPosition.Position.y;
+			mbPointerVisible = frameInfo.PointerPosition.Visible != 0;
+		}
 
-	if (frameInfo.PointerShapeBufferSize)
-		mbPointerImageDirty = true;
+		// We MUST update the pointer texture immediately, as the new pointer data is only available
+		// on this frame.
+		if (frameInfo.PointerShapeBufferSize)
+			UpdatePointer();
 
-	if (mbPointerVisible && mbPointerImageDirty)
-		UpdatePointer();
+		int x = mCaptureX;
+		int y = mCaptureY;
 
-	int x = mCaptureX;
-	int y = mCaptureY;
+		if (x + mSrcW > mOutputW)
+			x = mOutputW - mSrcW;
 
-	if (x + mSrcW > mOutputW)
-		x = mOutputW - mSrcW;
+		if (y + mSrcH > mOutputH)
+			y = mOutputH - mSrcH;
 
-	if (y + mSrcH > mOutputH)
-		y = mOutputH - mSrcH;
+		if (x < 0)
+			x = 0;
 
-	if (x < 0)
-		x = 0;
-
-	if (y < 0)
-		y = 0;
+		if (y < 0)
+			y = 0;
 
 #if !WIN7_TEST
-	ID3D11Texture2D *pTexImage;
-	hr = pResource->QueryInterface(IID_ID3D11Texture2D, (void **)&pTexImage);
-	if (FAILED(hr)) {
-		pResource->Release();
-		mpOutDup->ReleaseFrame();
-		return false;
-	}
+		vdrefptr<ID3D11Texture2D> pTexImage;
+		hr = pResource->QueryInterface(IID_ID3D11Texture2D, (void **)~pTexImage);
+		if (FAILED(hr)) {
+			pResource.clear();
+			mpOutDup->ReleaseFrame();
+			return false;
+		}
 
-	D3D11_BOX copybox;
-	copybox.left = x;
-	copybox.top = y;
-	copybox.right = std::min<sint32>(x + mSrcW, mOutputW);
-	copybox.bottom = std::min<sint32>(y + mSrcH, mOutputH);
-	copybox.front = 0;
-	copybox.back = 1;
+		D3D11_BOX copybox;
+		copybox.left = x;
+		copybox.top = y;
+		copybox.right = std::min<sint32>(x + mSrcW, mOutputW);
+		copybox.bottom = std::min<sint32>(y + mSrcH, mOutputH);
+		copybox.front = 0;
+		copybox.back = 1;
 
-	mpDevCtx->CopySubresourceRegion(mpImageTex, 0, 0, 0, 0, pTexImage, 0, &copybox);
-	pTexImage->Release();
+		mpDevCtx->CopySubresourceRegion(mpImageTex, 0, 0, 0, 0, pTexImage, 0, &copybox);
 #endif
 
-	UpdateFrame(frameInfo, x, y, dispatch);
+		UpdateFrame(frameInfo, x, y, dispatch);
+	} catch(const MyError&) {
+		pResource.clear();
+		mpOutDup->ReleaseFrame();
+		throw;
+	}
 
 #if !WIN7_TEST
-	pResource->Release();
-
+	pResource.clear();
 	mpOutDup->ReleaseFrame();
 #endif
 
@@ -550,8 +553,17 @@ bool VDScreenGrabberDXGI12::InitDevice() {
 
 	hr = pD3D11CreateDevice(mpAdapter, D3D_DRIVER_TYPE_UNKNOWN, NULL, dwCreateFlags, NULL, 0, D3D11_SDK_VERSION, &mpDevice, NULL, &mpDevCtx);
 
-	if (FAILED(hr))
+	if (FAILED(hr)) {
+#ifdef _DEBUGX
+		dwCreateFlags &= ~D3D11_CREATE_DEVICE_DEBUG;
+
+		hr = pD3D11CreateDevice(mpAdapter, D3D_DRIVER_TYPE_UNKNOWN, NULL, dwCreateFlags, NULL, 0, D3D11_SDK_VERSION, &mpDevice, NULL, &mpDevCtx);
+		if (FAILED(hr))
+			return false;
+#else
 		return false;
+#endif
+	}
 
 #if !WIN7_TEST
 	hr = pOutput1->DuplicateOutput(mpDevice, &mpOutDup);
@@ -1435,8 +1447,6 @@ void VDScreenGrabberDXGI12::UpdatePointer() {
 		return;
 
 	mpDevice->CreateShaderResourceView(mpPointerImageTex, NULL, &mpPointerImageSRV);
-
-	mbPointerImageDirty = false;
 }
 
 void VDScreenGrabberDXGI12::RenderPointer(int x, int y) {

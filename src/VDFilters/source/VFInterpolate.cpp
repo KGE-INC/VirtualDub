@@ -223,6 +223,7 @@ VDXVF_END_SCRIPT_METHODS()
 
 uint32 VDVideoFilterInterpolate::GetParams() {
 	const VDXPixmapLayout& pxsrc = *fa->src.mpPixmapLayout;
+	VDXPixmapLayout& pxdst = *fa->dst.mpPixmapLayout;
 
 	double oldRate = (double)fa->dst.mFrameRateHi / (double)fa->dst.mFrameRateLo;
 	double newRate = mConfig.mRateFactor;
@@ -307,8 +308,10 @@ uint32 VDVideoFilterInterpolate::GetParams() {
 			return FILTERPARAM_NOT_SUPPORTED;
 	}
 
-	if (!mConfig.mbLerp)
+	if (!mConfig.mbLerp) {
+		pxdst = pxsrc;
 		return FILTERPARAM_SUPPORTS_ALTFORMATS | FILTERPARAM_PURE_TRANSFORM;
+	}
 
 	if (ff->getCPUFlags() & CPUF_SUPPORTS_SSE2)
 		mpLerpFn = LerpVec16_SSE2;

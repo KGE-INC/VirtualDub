@@ -2049,35 +2049,40 @@ unknown_PCM_format:
 		if (mpCB)
 			mpCB->UICaptureStart(fTest);
 
-		if (!mpDriver->CaptureStart()) {
-			icd.mpError = new_nothrow MyError("Unable to start video capture.");
-		} else {
-			VDSamplingAutoProfileScope autoVTProfile;
+		try {
+			if (!mpDriver->CaptureStart()) {
+				icd.mpError = new_nothrow MyError("Unable to start video capture.");
+			} else {
+				VDSamplingAutoProfileScope autoVTProfile;
 
-			MSG msg;
+				MSG msg;
 
-			for(;;) {
-				BOOL result = GetMessage(&msg, NULL, 0, 0);
+				for(;;) {
+					BOOL result = GetMessage(&msg, NULL, 0, 0);
 
-				if (result == (BOOL)-1)
-					break;
+					if (result == (BOOL)-1)
+						break;
 
-				if (!result) {
-					PostQuitMessage(msg.wParam);
-					break;
-				}
+					if (!result) {
+						PostQuitMessage(msg.wParam);
+						break;
+					}
 
-				if (!msg.hwnd && msg.message == WM_APP+100)
-					break;
+					if (!msg.hwnd && msg.message == WM_APP+100)
+						break;
 
-				if (!guiCheckDialogs(&msg) && !VDUIFrame::TranslateAcceleratorMessage(msg)) {
-					TranslateMessage(&msg);
-					DispatchMessage(&msg);
+					if (!guiCheckDialogs(&msg) && !VDUIFrame::TranslateAcceleratorMessage(msg)) {
+						TranslateMessage(&msg);
+						DispatchMessage(&msg);
+					}
 				}
 			}
-		}
 
-		mpDriver->CaptureAbort();
+			mpDriver->CaptureAbort();
+		} catch(MyError& e) {
+			if (!icd.mpError)
+				icd.mpError = new_nothrow MyError(e);
+		}
 
 		if (mpCB)
 			mpCB->UICaptureEnd(!icd.mpError);

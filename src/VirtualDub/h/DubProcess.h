@@ -71,6 +71,8 @@ public:
 	void SetVideoFilterSystem(FilterSystem *fs);
 	void SetVideoRequestQueue(VDDubFrameRequestQueue *q);
 
+	void SetPriority(int priority);
+
 	void Init(const DubOptions& opts, const VDRenderFrameMap *frameMap, DubVideoStreamInfo *pvsi, IVDDubberOutputSystem *pOutputSystem, AVIPipe *pVideoPipe, VDAudioPipeline *pAudioPipe, VDStreamInterleaver *pStreamInterleaver);
 	void Shutdown();
 

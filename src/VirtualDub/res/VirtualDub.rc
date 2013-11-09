@@ -78,8 +78,6 @@ BEGIN
         POPUP "E&xport"
         BEGIN
             MENUITEM "Image sequence...",           ID_FILE_SAVEIMAGESEQ
-            MENUITEM "Stripe master...",            ID_FILE_SAVESTRIPEMASTER
-            MENUITEM "Striped AVI...",              ID_FILE_SAVESTRIPEDAVI
             MENUITEM "Adobe Filmstrip (*.flm)...",  ID_FILE_SAVEFILMSTRIP
             MENUITEM "Raw audio...",                ID_FILE_SAVERAWAUDIO
             MENUITEM "Raw video...",                ID_FILE_SAVERAWVIDEO
@@ -973,38 +971,39 @@ CAPTION "AVI Information"
 FONT 8, "MS Shell Dlg", 0, 0, 0x0
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,263,197,50,14
-    LTEXT           "Frame size, fps (µs per frame):",IDC_STATIC,15,17,105,8
-    LTEXT           "Length:",IDC_STATIC,15,27,25,8
-    LTEXT           "Min/avg/max/total key frame size:",IDC_STATIC,15,57,109,8
-    LTEXT           "Min/avg/max/total delta size:",IDC_STATIC,15,67,113,8
-    LTEXT           "Sampling rate:",IDC_STATIC,15,106,46,8
-    LTEXT           "Channels:",IDC_STATIC,15,116,32,8
-    LTEXT           "Sample precision:",IDC_STATIC,15,126,56,8
-    GROUPBOX        "Audio stream",IDC_STATIC,7,96,306,96
     GROUPBOX        "Video stream",IDC_STATIC,7,7,306,88
-    LTEXT           "Length:",IDC_STATIC,15,156,25,8
-    LTEXT           "Min/avg/max/total frame size:",IDC_STATIC,15,166,100,8
-    LTEXT           "Decompressor:",IDC_STATIC,15,37,48,8
-    LTEXT           "Layout:",IDC_STATIC,15,146,24,8
+    LTEXT           "Frame size, fps (µs per frame):",IDC_STATIC,15,17,105,8
     RTEXT           "",IDC_VIDEO_FORMAT,129,17,176,10,SS_SUNKEN
+    LTEXT           "Length:",IDC_STATIC,15,27,25,8
     RTEXT           "",IDC_VIDEO_NUMFRAMES,129,27,176,10,SS_SUNKEN
+    LTEXT           "Decompressor:",IDC_STATIC,15,37,48,8
     RTEXT           "",IDC_VIDEO_COMPRESSION,129,37,176,10,SS_SUNKEN
-    RTEXT           "",IDC_VIDEO_KEYFRAMESIZES,129,57,176,9,SS_SUNKEN
-    RTEXT           "",IDC_VIDEO_NONKEYFRAMESIZES,129,67,176,10,SS_SUNKEN
-    RTEXT           "",IDC_VIDEO_NUMKEYFRAMES,129,47,176,10,SS_SUNKEN
     LTEXT           "Number of key frames:",IDC_STATIC,15,47,102,8
+    RTEXT           "",IDC_VIDEO_NUMKEYFRAMES,129,47,176,10,SS_SUNKEN
+    LTEXT           "Min/avg/max/total key frame size:",IDC_STATIC,15,57,109,8
+    RTEXT           "",IDC_VIDEO_KEYFRAMESIZES,129,57,176,9,SS_SUNKEN
+    LTEXT           "Min/avg/max/total delta size:",IDC_STATIC,15,67,113,8
+    RTEXT           "",IDC_VIDEO_NONKEYFRAMESIZES,129,67,176,10,SS_SUNKEN
+    LTEXT           "Data rate:",IDC_STATIC,15,77,102,8
+    RTEXT           "",IDC_VIDEO_DATARATE,129,77,176,10,SS_SUNKEN
+    GROUPBOX        "Audio stream",IDC_STATIC,7,96,306,96
+    LTEXT           "Sampling rate:",IDC_STATIC,15,106,46,8
     RTEXT           "",IDC_AUDIO_SAMPLINGRATE,129,106,176,10,SS_SUNKEN
+    LTEXT           "Channels:",IDC_STATIC,15,116,32,8
     RTEXT           "",IDC_AUDIO_CHANNELS,129,116,176,10,SS_SUNKEN
+    LTEXT           "Sample precision:",IDC_STATIC,15,126,56,8
     RTEXT           "",IDC_AUDIO_PRECISION,129,126,176,9,SS_SUNKEN
-    RTEXT           "",IDC_AUDIO_LAYOUT,129,146,176,10,SS_SUNKEN
-    RTEXT           "",IDC_AUDIO_LENGTH,129,156,176,10,SS_SUNKEN
-    RTEXT           "",IDC_AUDIO_FRAMESIZES,129,166,176,10,SS_SUNKEN
     LTEXT           "Compression:",IDC_STATIC,15,136,43,8
     RTEXT           "",IDC_AUDIO_COMPRESSION,129,136,176,10,SS_SUNKEN
-    RTEXT           "",IDC_VIDEO_DATARATE,129,77,176,10,SS_SUNKEN
-    LTEXT           "Data rate:",IDC_STATIC,15,77,102,8
+    LTEXT           "Layout:",IDC_STATIC,15,146,24,8
+    RTEXT           "",IDC_AUDIO_LAYOUT,129,146,176,10,SS_SUNKEN
+    LTEXT           "Length:",IDC_STATIC,15,156,25,8
+    RTEXT           "",IDC_AUDIO_LENGTH,129,156,176,10,SS_SUNKEN
+    LTEXT           "Min/avg/max/total frame size:",IDC_STATIC,15,166,100,8
+    RTEXT           "",IDC_AUDIO_FRAMESIZES,129,166,176,10,SS_SUNKEN
     LTEXT           "Data rate:",IDC_STATIC,15,176,100,8
     RTEXT           "",IDC_AUDIO_DATARATE,129,176,176,10,SS_SUNKEN
+    PUSHBUTTON      "&Copy",IDC_COPY,7,197,50,14
 END
 
 IDD_FILTER_EMBOSS DIALOG  0, 0, 307, 106
@@ -2392,7 +2391,8 @@ BEGIN
     EDITTEXT        IDC_PROGRAM,115,21,261,14,ES_AUTOHSCROLL
     PUSHBUTTON      "...",IDC_BROWSE,377,21,16,14
     LTEXT           "&Command arguments",IDC_STATIC,7,36,108,14,SS_CENTERIMAGE
-    EDITTEXT        IDC_ARGUMENTS,115,36,278,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_ARGUMENTS,115,36,261,14,ES_AUTOHSCROLL
+    PUSHBUTTON      "4",IDC_CMDLINE_ARG,377,36,16,14
     LTEXT           "&Output filename",IDC_STATIC,7,52,108,14,SS_CENTERIMAGE
     EDITTEXT        IDC_OUTPUTFILENAME,115,52,278,14,ES_AUTOHSCROLL
     LTEXT           "&Launch parameters",IDC_STATIC,7,68,108,14,SS_CENTERIMAGE
@@ -3500,13 +3500,13 @@ END
 IDR_DUB_KEYS ACCELERATORS 
 BEGIN
     VK_SPACE,       ID_DUBINPROGRESS_ABORTFAST, VIRTKEY, NOINVERT
+    VK_END,         ID_EDIT_SETSELEND,      VIRTKEY, NOINVERT
+    VK_HOME,        ID_EDIT_SETSELSTART,    VIRTKEY, NOINVERT
     VK_F4,          ID_FILE_JOBCONTROL,     VIRTKEY, NOINVERT
     VK_F1,          ID_HELP_CONTENTS,       VIRTKEY, NOINVERT
     VK_F9,          ID_OPTIONS_DISPLAYINPUTVIDEO, VIRTKEY, NOINVERT
     VK_F10,         ID_OPTIONS_DISPLAYOUTPUTVIDEO, VIRTKEY, NOINVERT
     VK_F8,          ID_OPTIONS_SHOWLOG,     VIRTKEY, NOINVERT
-    VK_HOME,        ID_EDIT_SETSELSTART,    VIRTKEY, NOINVERT
-    VK_END,         ID_EDIT_SETSELEND,      VIRTKEY, NOINVERT
     VK_RIGHT,       ID_VIDEO_SEEK_END,      VIRTKEY, CONTROL, NOINVERT
     VK_RIGHT,       ID_VIDEO_SEEK_KEYNEXT,  VIRTKEY, SHIFT, NOINVERT
     VK_LEFT,        ID_VIDEO_SEEK_KEYPREV,  VIRTKEY, SHIFT, NOINVERT
@@ -3523,6 +3523,7 @@ BEGIN
     "]",            ID_VIDEO_SEEK_SELEND,   ASCII,  NOINVERT
     "[",            ID_VIDEO_SEEK_SELSTART, ASCII,  NOINVERT
     VK_LEFT,        ID_VIDEO_SEEK_START,    VIRTKEY, CONTROL, NOINVERT
+    VK_RETURN,      ID_DUBINPROGRESS_ABORTFAST, VIRTKEY, NOINVERT
 END
 
 IDR_PREVIEW_KEYS ACCELERATORS 
@@ -3554,8 +3555,8 @@ VS_VERSION_INFO$(NDEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,10,3,0
- PRODUCTVERSION 1,10,3,0
+ FILEVERSION 1,10,4,0
+ PRODUCTVERSION 1,10,4,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -3571,12 +3572,12 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "VirtualDub"
-            VALUE "FileVersion", "1.10.3"
+            VALUE "FileVersion", "1.10.4"
             VALUE "InternalName", "VirtualDub"
-            VALUE "LegalCopyright", "Copyright © 1998-2012 by Avery Lee, All Rights Reserved."
+            VALUE "LegalCopyright", "Copyright © 1998-2013 by Avery Lee, All Rights Reserved."
             VALUE "OriginalFilename", "VirtualDub.exe"
             VALUE "ProductName", "VirtualDub"
-            VALUE "ProductVersion", "1.10.3"
+            VALUE "ProductVersion", "1.10.4"
         END
     END
     BLOCK "VarFileInfo"
@@ -3592,8 +3593,8 @@ VS_VERSION_INFO$(_DEBUG) VERSIONINFO
 #else
 VS_VERSION_INFO VERSIONINFO
 #endif
- FILEVERSION 1,10,3,0
- PRODUCTVERSION 1,10,3,0
+ FILEVERSION 1,10,4,0
+ PRODUCTVERSION 1,10,4,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x21L
@@ -3609,12 +3610,12 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "VirtualDub"
-            VALUE "FileVersion", "1.10.3"
+            VALUE "FileVersion", "1.10.4"
             VALUE "InternalName", "VirtualDub"
-            VALUE "LegalCopyright", "Copyright © 1999-2012 by Avery Lee, All Rights Reserved."
+            VALUE "LegalCopyright", "Copyright © 1999-2013 by Avery Lee, All Rights Reserved."
             VALUE "OriginalFilename", "VirtualDub.exe"
             VALUE "ProductName", "VirtualDub"
-            VALUE "ProductVersion", "1.10.3"
+            VALUE "ProductVersion", "1.10.4"
             VALUE "SpecialBuild", "Debug build (i.e. big, fat, and slow)"
         END
     END

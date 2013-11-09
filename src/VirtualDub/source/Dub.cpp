@@ -1784,6 +1784,7 @@ void Dubber::Stop() {
 	// deinitialize DirectDraw
 
 	filters.DeallocateBuffers();
+	filters.SetAsyncThreadCount(-1);
 
 	if (pStatusHandler && vInfo.cur_proc_src >= 0)
 		pStatusHandler->SetLastPosition(vInfo.cur_proc_src);
@@ -1849,8 +1850,7 @@ void Dubber::SetPriority(int index) {
 	if (mpIOThread && mpIOThread->isThreadActive())
 		SetThreadPriority(mpIOThread->getThreadHandle(), g_iPriorities[index][0]);
 
-	if (mProcessThread.isThreadActive())
-		SetThreadPriority(mProcessThread.getThreadHandle(), g_iPriorities[index][1]);
+	mProcessThread.SetPriority(g_iPriorities[index][1]);
 }
 
 void Dubber::SetBackground(bool background) {

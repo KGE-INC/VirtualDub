@@ -80,12 +80,12 @@ BEGIN
     CONTROL         "&Capture mouse pointer image",IDC_DRAW_CURSOR,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,12,83,110,10
     LTEXT           "Acceleration mode",IDC_STATIC,14,97,73,10
     COMBOBOX        IDC_ACCEL_MODE,79,94,207,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "OpenGL acceleration greatly lowers CPU usage when doing screen capture and permits advanced GPU processing of the captured image. At least a GeForce 1, Radeon 8500, or equivalent is required for hardware YUV conversion support.",IDC_STATIC_OPENGL,24,107,254,27
-    CONTROL         "&Rescale from larger area:",IDC_RESCALE_IMAGE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,23,136,97,10
-    LTEXT           "Source &width",IDC_STATIC_WIDTH,145,137,42,12
-    EDITTEXT        IDC_WIDTH,197,136,58,12,ES_AUTOHSCROLL
-    LTEXT           "Source &height",IDC_STATIC_HEIGHT,145,152,45,12
-    EDITTEXT        IDC_HEIGHT,197,150,58,12,ES_AUTOHSCROLL
+    LTEXT           "OpenGL acceleration greatly lowers CPU usage when doing screen capture and permits advanced GPU processing of the captured image. At least a GeForce 1, Radeon 8500, or equivalent is required for hardware YUV conversion support.",IDC_STATIC_OPENGL,24,109,265,32
+    CONTROL         "&Rescale from larger area:",IDC_RESCALE_IMAGE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,23,145,97,10
+    LTEXT           "Source &width",IDC_STATIC_WIDTH,145,146,50,12
+    EDITTEXT        IDC_WIDTH,197,145,58,12,ES_AUTOHSCROLL
+    LTEXT           "Source &height",IDC_STATIC_HEIGHT,145,161,50,12
+    EDITTEXT        IDC_HEIGHT,197,159,58,12,ES_AUTOHSCROLL
     CONTROL         "Remove &unchanged frames\n(Requires at least a GeForce 3 or Radeon 8500)",IDC_REMOVE_DUPES,
                     "Button",BS_AUTOCHECKBOX | BS_TOP | BS_MULTILINE | WS_TABSTOP,23,179,254,16
     DEFPUSHBUTTON   "OK",IDOK,190,205,50,14

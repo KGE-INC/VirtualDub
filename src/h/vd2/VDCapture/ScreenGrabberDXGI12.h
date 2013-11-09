@@ -110,7 +110,6 @@ protected:
 	ID3D11Buffer *mpPointerConstBuf;
 	ID3D11BlendState *mpPointerBlendState;
 	ID3D11BlendState *mpPointerMaskBlendState;
-	bool mbPointerImageDirty;
 	ID3D11VertexShader *mpPointerVS;
 	ID3D11PixelShader *mpPointerPSBlend;
 	ID3D11PixelShader *mpPointerPSMaskA0;

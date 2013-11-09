@@ -60,9 +60,6 @@ private:
 	Streams	mStreams;
 
 	static char szME[];
-
-	static void _InfoDlgThread(void *pvInfo);
-	static INT_PTR APIENTRY _InfoDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 public:
 	InputFileAVI();
 	~InputFileAVI();

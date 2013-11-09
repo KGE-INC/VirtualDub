@@ -208,6 +208,8 @@ public:
 
 	bool IsAsynchronous() const { return mThreadCount > 0; }
 
+	void SetPriority(int priority);
+
 	void Init(int threads, IVDVideoCompressor *pBaseCompressor);
 	void Shutdown();
 
@@ -265,6 +267,7 @@ protected:
 
 	vdfastdeque<OutputEntry> mOutputBuffer;
 	VDSemaphore mInputBufferCount;
+	int mPriority;
 
 	MyError mError;
 

@@ -257,8 +257,8 @@ void VDInputFileGIFSharedData::Parse(const wchar_t *filename) {
 
 		if (!nextFrameDelay)
 			nextFrameDelay = 10;
-		timebase += nextFrameDelay;
 		presentationTimes.push_back(timebase);
+		timebase += nextFrameDelay;
 
 		if (presentationTimes.size() > 2) {
 			spantotal += timebase - *(presentationTimes.end() - 3);

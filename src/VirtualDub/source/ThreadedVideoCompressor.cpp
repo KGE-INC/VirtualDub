@@ -125,6 +125,7 @@ VDThreadedVideoCompressor::VDThreadedVideoCompressor()
 	, mbFlushInProgress(false)
 	, mbLoopDetectedDuringFlush(false)
 	, mInputBufferCount(0)
+	, mPriority(VDThread::kPriorityDefault)
 {
 }
 
@@ -140,6 +141,17 @@ VDThreadedVideoCompressor::FlushStatus VDThreadedVideoCompressor::GetFlushStatus
 	}
 
 	return (FlushStatus)result;
+}
+
+void VDThreadedVideoCompressor::SetPriority(int priority) {
+	if (mPriority != priority) {
+		mPriority = priority;
+
+		if (mpThreads) {
+			for(int i=0; i<mThreadCount; ++i)
+				mpThreads[i].ThreadSetPriority(priority);
+		}
+	}
 }
 
 void VDThreadedVideoCompressor::Init(int threads, IVDVideoCompressor *pBaseCompressor) {
@@ -159,6 +171,9 @@ void VDThreadedVideoCompressor::Init(int threads, IVDVideoCompressor *pBaseCompr
 	mpThreads = new VDThreadedVideoCompressorSlave[threads];
 
 	if (threads) {
+		for(int i=0; i<threads; ++i)
+			mpThreads[i].ThreadSetPriority(mPriority);
+
 		mpThreads[0].Init(this, pBaseCompressor);
 
 		for(int i=1; i<threads; ++i) {

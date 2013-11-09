@@ -150,64 +150,6 @@ namespace {
 			CloseClipboard();
 		}
 	}
-
-	void CopyTextToClipboardA(const char *s) {
-		if (!OpenClipboard(NULL))
-			return;
-
-		if (EmptyClipboard()) {
-			HANDLE hMem;
-			size_t len = strlen(s) + 1;
-			if (hMem = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, len)) {
-				void *lpvMem;
-				if (lpvMem = GlobalLock(hMem)) {
-					memcpy(lpvMem, s, len);
-
-					GlobalUnlock(lpvMem);
-					SetClipboardData(CF_TEXT, hMem);
-					CloseClipboard();
-					return;
-				}
-				GlobalFree(hMem);
-			}
-		}
-
-		CloseClipboard();
-	}
-
-	void CopyTextToClipboardW(const wchar_t *s) {
-		if (!OpenClipboard(NULL))
-			return;
-
-		if (EmptyClipboard()) {
-			HANDLE hMem;
-			size_t len = sizeof(wchar_t) * (wcslen(s) + 1);
-			if (hMem = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, len)) {
-				void *lpvMem;
-				if (lpvMem = GlobalLock(hMem)) {
-					memcpy(lpvMem, s, len);
-
-					GlobalUnlock(lpvMem);
-					SetClipboardData(CF_UNICODETEXT, hMem);
-					CloseClipboard();
-					return;
-				}
-				GlobalFree(hMem);
-			}
-		}
-
-		CloseClipboard();
-	}
-
-	void CopyTextToClipboard(const wchar_t *s) {
-		if (VDIsWindowsNT())
-			CopyTextToClipboardW(s);
-		else {
-			VDStringA sa(VDTextWToA(s));
-
-			CopyTextToClipboardA(sa.c_str());
-		}
-	}
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -452,6 +394,8 @@ VDProject::VDProject()
 	, mbUpdateLong(false)
 	, mFramesDecoded(0)
 	, mLastDecodeUpdate(0)
+	, mDisplayFrameLocks(0)
+	, mbDisplayFrameDeferred(false)
 	, mPreviewRestartMode(kPreviewRestart_None)
 	, mVideoInputFrameRate(0,0)
 	, mVideoOutputFrameRate(0,0)
@@ -753,6 +697,24 @@ void VDProject::MaskSelection(bool bNewMode) {
 	}
 }
 
+void VDProject::LockDisplayFrame() {
+	++mDisplayFrameLocks;
+}
+
+void VDProject::UnlockDisplayFrame() {
+	VDASSERT(mDisplayFrameLocks > 0);
+
+	if (mDisplayFrameLocks) {
+		--mDisplayFrameLocks;
+
+		if (mbDisplayFrameDeferred) {
+			mbDisplayFrameDeferred = false;
+
+			DisplayFrame();
+		}
+	}
+}
+
 void VDProject::DisplayFrame(bool bDispInput, bool bDispOutput, bool forceInput, bool forceOutput) {
 	VDPosition pos = mposCurrentFrame;
 	VDPosition timeline_pos = pos;
@@ -765,6 +727,11 @@ void VDProject::DisplayFrame(bool bDispInput, bool bDispOutput, bool forceInput,
 
 	if (g_dubber)
 		return;
+
+	if (mDisplayFrameLocks) {
+		mbDisplayFrameDeferred = true;
+		return;
+	}
 
 	const bool showInputFrame = bDispInput && (g_dubOpts.video.fShowInputFrame || forceInput);
 	const bool showOutputFrame = bDispOutput && (g_dubOpts.video.fShowOutputFrame || forceOutput);
@@ -1618,8 +1585,11 @@ void VDProject::StartServer(const char *serverName) {
 }
 
 void VDProject::ShowInputInfo() {
-	if (inputAVI)
+	if (inputAVI) {
+		LockDisplayFrame();
 		inputAVI->InfoDialog(mhwnd);
+		UnlockDisplayFrame();
+	}
 }
 
 void VDProject::SetVideoMode(int mode) {
@@ -1652,13 +1622,13 @@ void VDProject::CopySourceFrameNumberToClipboard() {
 
 	VDStringW s;
 	s.sprintf(L"%lld", pos);
-	CopyTextToClipboard(s.c_str());
+	VDCopyTextToClipboard(s.c_str());
 }
 
 void VDProject::CopyOutputFrameNumberToClipboard() {
 	VDStringW s;
 	s.sprintf(L"%lld", GetCurrentFrame());
-	CopyTextToClipboard(s.c_str());
+	VDCopyTextToClipboard(s.c_str());
 }
 
 int VDProject::GetAudioSourceCount() const {

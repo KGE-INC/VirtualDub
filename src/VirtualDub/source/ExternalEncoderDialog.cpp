@@ -100,21 +100,44 @@ protected:
 	VDUIProxyComboBoxControl mTypeCombo;
 	VDDelegate mDelegateOnTypeChanged;
 
+	HFONT mhFontMarlett;
+
 	VDExtEncProfile& mProfile;
 };
 
 VDUIDialogExtEncMain::VDUIDialogExtEncMain(VDExtEncProfile& profile)
 	: VDDialogFrameW32(IDD_EXTENC_EDIT_MAIN)
 	, mProfile(profile)
+	, mhFontMarlett(NULL)
 {
 	mTypeCombo.OnSelectionChanged() += mDelegateOnTypeChanged.Bind(this, &VDUIDialogExtEncMain::OnTypeChangedHandler);
 }
 
 VDUIDialogExtEncMain::~VDUIDialogExtEncMain() {
+	if (mhFontMarlett)
+		DeleteObject(mhFontMarlett);
 }
 
 bool VDUIDialogExtEncMain::OnLoaded() {
 	AddProxy(&mTypeCombo, IDC_TYPE);
+
+	if (!mhFontMarlett) {
+		HFONT hfontDlg = (HFONT)SendMessage(mhdlg, WM_GETFONT, 0, 0);
+
+		if (hfontDlg) {
+			LOGFONT lf = {0};
+			if (GetObject(hfontDlg, sizeof lf, &lf)) {
+				mhFontMarlett = CreateFont(lf.lfHeight, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Marlett");
+			}
+		}
+	}
+
+	if (mhFontMarlett) {
+		HWND hwndControl = GetControl(IDC_CMDLINE_ARG);
+
+		if (hwndControl)
+			SendMessage(hwndControl, WM_SETFONT, (WPARAM)mhFontMarlett, MAKELONG(TRUE, 0));
+	}
 
 	mTypeCombo.AddItem(L"Video encoder");
 	mTypeCombo.AddItem(L"Audio encoder");
@@ -152,7 +175,53 @@ bool VDUIDialogExtEncMain::OnCommand(uint32 id, uint32 extcode) {
 		}
 
 		return true;
+	} else if (id == IDC_CMDLINE_ARG) {
+		const wchar_t *const kMenuItems[]={
+			L"%(width)\tVideo frame width",
+			L"%(height)\tVideo frame height",
+			L"%(fps)\tVideo frame rate (fractional)",
+			L"%(fpsnum)\tVideo frame rate fraction numerator",
+			L"%(fpsden)\tVideo frame rate fraction denominator",
+			L"%(outputname)\tOutput file name, with extension",
+			L"%(outputbasename)\tOutput file name, without extension",
+			L"%(outputfile)\tOutput directory and file name",
+			L"%(outputdir)\tOutput directory only",
+			L"%(hostdir)\tVirtualDub program directory",
+			L"%(programdir)\tEncoder program directory",
+			L"%(systemdir)\tOS system directory",
+			L"%(tempvideofile)\tTemporary video directory and file name",
+			L"%(tempaudiofile)\tTemporary audio directory and file name",
+			L"%(samplingrate)\tAudio sampling rate, in Hz",
+			L"%(samplingkhz)\tAudio sampling rate, in KHz (fractional)",
+			L"%(channels)\tAudio channel count",
+			L"%(audioprecision)\tAudio sample precision, in bits",
+			NULL
+		};
+
+		int idx = ActivateMenuButton(IDC_CMDLINE_ARG, kMenuItems);
+
+		if ((unsigned)idx < sizeof(kMenuItems)/sizeof(kMenuItems[0]) - 1) {
+			const wchar_t *s = kMenuItems[idx];
+			const wchar_t *t = wcschr(s, '\t');
+
+			if (t) {
+				HWND hwndEdit = GetControl(IDC_ARGUMENTS);
+
+				if (hwndEdit) {
+					if (IsWindowUnicode(hwndEdit)) {
+						SendMessageW(hwndEdit, EM_SETSEL, -1, -1);
+						SendMessageW(hwndEdit, EM_REPLACESEL, TRUE, (LPARAM)VDStringW(s, t).c_str());
+					} else {
+						SendMessageA(hwndEdit, EM_SETSEL, -1, -1);
+						SendMessageA(hwndEdit, EM_REPLACESEL, TRUE, (LPARAM)VDTextWToA(VDStringW(s, t)).c_str());
+					}
+
+					SetFocus(hwndEdit);
+				}
+			}
+		}
 	}
+
 	return false;
 }
 
@@ -761,6 +830,8 @@ bool VDUIDialogConfigureExternalEncoders::OnCommand(uint32 id, uint32 extcode) {
 
 			if (idx >= 0) {
 				uint32 n = mListView.GetItemCount();
+
+				mListView.SetSelectedIndex(-1);
 
 				if (mbSetMode) {
 					ListSetItem *lsiprev = static_cast<ListSetItem *>(mListView.GetVirtualItem(idx));

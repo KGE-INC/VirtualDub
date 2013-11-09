@@ -82,6 +82,7 @@ namespace {
 		case nsVDPixmap::kPixFormat_Pal4:
 		case nsVDPixmap::kPixFormat_Pal8:
 		case nsVDPixmap::kPixFormat_Y8:
+		case nsVDPixmap::kPixFormat_Y8_FR:
 			VDPixmapRectFillPlane8(px.data, px.pitch, ix, iy, iw, ih, (uint8)c);
 			break;
 		case nsVDPixmap::kPixFormat_XRGB1555:
@@ -95,11 +96,17 @@ namespace {
 			VDPixmapRectFillPlane32(px.data, px.pitch, ix, iy, iw, ih, c);
 			break;
 		case nsVDPixmap::kPixFormat_YUV444_Planar:
+		case nsVDPixmap::kPixFormat_YUV444_Planar_FR:
+		case nsVDPixmap::kPixFormat_YUV444_Planar_709:
+		case nsVDPixmap::kPixFormat_YUV444_Planar_709_FR:
 			VDPixmapRectFillPlane8(px.data, px.pitch, ix, iy, iw, ih, (uint8)(c >> 8));
 			VDPixmapRectFillPlane8(px.data2, px.pitch2, ix, iy, iw, ih, (uint8)c);
 			VDPixmapRectFillPlane8(px.data3, px.pitch3, ix, iy, iw, ih, (uint8)(c >> 16));
 			break;
 		case nsVDPixmap::kPixFormat_YUV422_Planar:
+		case nsVDPixmap::kPixFormat_YUV422_Planar_FR:
+		case nsVDPixmap::kPixFormat_YUV422_Planar_709:
+		case nsVDPixmap::kPixFormat_YUV422_Planar_709_FR:
 			{
 				int isubx = VDCeilToInt(r.left		* 0.5f - 0.25f);
 				int isuby = VDCeilToInt(r.top		* 1.0f - 0.5f );
@@ -112,6 +119,9 @@ namespace {
 			}
 			break;
 		case nsVDPixmap::kPixFormat_YUV420_Planar:
+		case nsVDPixmap::kPixFormat_YUV420_Planar_FR:
+		case nsVDPixmap::kPixFormat_YUV420_Planar_709:
+		case nsVDPixmap::kPixFormat_YUV420_Planar_709_FR:
 			{
 				int isubx = VDCeilToInt(r.left		* 0.5f - 0.25f);
 				int isuby = VDCeilToInt(r.top		* 0.5f - 0.5f );
@@ -124,6 +134,9 @@ namespace {
 			}
 			break;
 		case nsVDPixmap::kPixFormat_YUV411_Planar:
+		case nsVDPixmap::kPixFormat_YUV411_Planar_FR:
+		case nsVDPixmap::kPixFormat_YUV411_Planar_709:
+		case nsVDPixmap::kPixFormat_YUV411_Planar_709_FR:
 			{
 				int isubx = VDCeilToInt(r.left		* 0.25f - 0.125f);
 				int isuby = VDCeilToInt(r.top		* 1.00f - 0.500f);
@@ -136,6 +149,9 @@ namespace {
 			}
 			break;
 		case nsVDPixmap::kPixFormat_YUV410_Planar:
+		case nsVDPixmap::kPixFormat_YUV410_Planar_FR:
+		case nsVDPixmap::kPixFormat_YUV410_Planar_709:
+		case nsVDPixmap::kPixFormat_YUV410_Planar_709_FR:
 			{
 				int isubx = VDCeilToInt(r.left		* 0.25f - 0.5f);
 				int isuby = VDCeilToInt(r.top		* 0.25f - 0.5f);
@@ -173,12 +189,43 @@ namespace {
 				break;
 
 			case nsVDPixmap::kPixFormat_Y8:
+				VDPixmapRectFillRaw(px, rDst, (VDConvertRGBToYCbCr(c) >> 8) & 0xff);
+				break;
+
+			case nsVDPixmap::kPixFormat_Y8_FR:
+				VDPixmapRectFillRaw(px, rDst, (VDConvertRGBToYCbCr((uint8)((c >> 16) & 0xff), (uint8)((c >> 8) & 0xff), (uint8)(c & 0xff), false, true) >> 8) & 0xff);
+				break;
+
 			case nsVDPixmap::kPixFormat_YUV444_Planar:
 			case nsVDPixmap::kPixFormat_YUV422_Planar:
 			case nsVDPixmap::kPixFormat_YUV420_Planar:
 			case nsVDPixmap::kPixFormat_YUV411_Planar:
 			case nsVDPixmap::kPixFormat_YUV410_Planar:
 				VDPixmapRectFillRaw(px, rDst, VDConvertRGBToYCbCr(c));
+				break;
+
+			case nsVDPixmap::kPixFormat_YUV444_Planar_FR:
+			case nsVDPixmap::kPixFormat_YUV422_Planar_FR:
+			case nsVDPixmap::kPixFormat_YUV420_Planar_FR:
+			case nsVDPixmap::kPixFormat_YUV411_Planar_FR:
+			case nsVDPixmap::kPixFormat_YUV410_Planar_FR:
+				VDPixmapRectFillRaw(px, rDst, VDConvertRGBToYCbCr((uint8)((c >> 16) & 0xff), (uint8)((c >> 8) & 0xff), (uint8)(c & 0xff), false, true));
+				break;
+
+			case nsVDPixmap::kPixFormat_YUV444_Planar_709:
+			case nsVDPixmap::kPixFormat_YUV422_Planar_709:
+			case nsVDPixmap::kPixFormat_YUV420_Planar_709:
+			case nsVDPixmap::kPixFormat_YUV411_Planar_709:
+			case nsVDPixmap::kPixFormat_YUV410_Planar_709:
+				VDPixmapRectFillRaw(px, rDst, VDConvertRGBToYCbCr((uint8)((c >> 16) & 0xff), (uint8)((c >> 8) & 0xff), (uint8)(c & 0xff), true, false));
+				break;
+
+			case nsVDPixmap::kPixFormat_YUV444_Planar_709_FR:
+			case nsVDPixmap::kPixFormat_YUV422_Planar_709_FR:
+			case nsVDPixmap::kPixFormat_YUV420_Planar_709_FR:
+			case nsVDPixmap::kPixFormat_YUV411_Planar_709_FR:
+			case nsVDPixmap::kPixFormat_YUV410_Planar_709_FR:
+				VDPixmapRectFillRaw(px, rDst, VDConvertRGBToYCbCr((uint8)((c >> 16) & 0xff), (uint8)((c >> 8) & 0xff), (uint8)(c & 0xff), true, true));
 				break;
 		}
 	}
@@ -335,14 +382,29 @@ uint32 VDVideoFilterResize::GetParams() {
 	switch(fa->src.mpPixmapLayout->format) {
 		case nsVDXPixmap::kPixFormat_XRGB8888:
 		case nsVDXPixmap::kPixFormat_YUV444_Planar:
+		case nsVDXPixmap::kPixFormat_YUV444_Planar_FR:
+		case nsVDXPixmap::kPixFormat_YUV444_Planar_709:
+		case nsVDXPixmap::kPixFormat_YUV444_Planar_709_FR:
 		case nsVDXPixmap::kPixFormat_YUV422_Planar:
+		case nsVDXPixmap::kPixFormat_YUV422_Planar_FR:
+		case nsVDXPixmap::kPixFormat_YUV422_Planar_709:
+		case nsVDXPixmap::kPixFormat_YUV422_Planar_709_FR:
 		case nsVDXPixmap::kPixFormat_YUV411_Planar:
+		case nsVDXPixmap::kPixFormat_YUV411_Planar_FR:
+		case nsVDXPixmap::kPixFormat_YUV411_Planar_709:
+		case nsVDXPixmap::kPixFormat_YUV411_Planar_709_FR:
 			break;
 
 		case nsVDXPixmap::kPixFormat_VDXA_RGB:
 		case nsVDXPixmap::kPixFormat_VDXA_YUV:
 		case nsVDXPixmap::kPixFormat_YUV420_Planar:
+		case nsVDXPixmap::kPixFormat_YUV420_Planar_FR:
+		case nsVDXPixmap::kPixFormat_YUV420_Planar_709:
+		case nsVDXPixmap::kPixFormat_YUV420_Planar_709_FR:
 		case nsVDXPixmap::kPixFormat_YUV410_Planar:
+		case nsVDXPixmap::kPixFormat_YUV410_Planar_FR:
+		case nsVDXPixmap::kPixFormat_YUV410_Planar_709:
+		case nsVDXPixmap::kPixFormat_YUV410_Planar_709_FR:
 			if (mConfig.mbInterlaced)
 				return FILTERPARAM_NOT_SUPPORTED;
 

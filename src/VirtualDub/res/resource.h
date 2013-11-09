@@ -894,6 +894,9 @@
 #define IDC_BYPASSCOMPRESSION           1520
 #define IDC_IMPORT                      1521
 #define IDC_SHOW_ALL                    1523
+#define IDC_COPY                        1524
+#define IDC_BUTTON2                     1528
+#define IDC_CMDLINE_ARG                 1528
 #define IDS_HELP_CONTENTS               1536
 #define IDS_HELP_CHANGELOG              1537
 #define IDS_HELP_RELEASENOTES           1538
@@ -1429,8 +1432,8 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        306
-#define _APS_NEXT_COMMAND_VALUE         40553
-#define _APS_NEXT_CONTROL_VALUE         1528
+#define _APS_NEXT_COMMAND_VALUE         40555
+#define _APS_NEXT_CONTROL_VALUE         1529
 #define _APS_NEXT_SYMED_VALUE           111
 #endif
 #endif

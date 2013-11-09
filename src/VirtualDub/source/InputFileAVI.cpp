@@ -31,6 +31,7 @@
 #include <vd2/system/debug.h>
 #include <vd2/system/error.h>
 #include <vd2/system/filesys.h>
+#include <vd2/system/thread.h>
 #include <vd2/system/w32assist.h>
 #include <vd2/Dita/resources.h>
 #include <vd2/Dita/services.h>
@@ -42,6 +43,7 @@
 #include "oshelper.h"
 #include "prefs.h"
 #include "misc.h"
+#include <vd2/VDLib/Dialog.h>
 
 #include "resource.h"
 
@@ -613,79 +615,117 @@ bool InputFileAVI::GetAudioSource(int index, AudioSource **ppSrc) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-namespace {
-	struct MyFileInfo {
-		InputFileAVI *thisPtr;
-		vdrefptr<IVDVideoSource> mpVideo;
-		vdrefptr<AudioSource> mpAudio;
+class VDAVIFileInfoDialog : public VDDialogFrameW32, public VDThread {
+public:
+	VDAVIFileInfoDialog(InputFileAVI *file);
+	~VDAVIFileInfoDialog();
 
-		volatile HWND hWndAbort;
-		UINT statTimer;
-		long	lVideoKFrames;
-		long	lVideoKMinSize;
-		sint64 i64VideoKTotalSize;
-		long	lVideoKMaxSize;
-		long	lVideoCFrames;
-		long	lVideoCMinSize;
-		sint64	i64VideoCTotalSize;
-		long	lVideoCMaxSize;
+protected:
+	virtual void ThreadRun();
+	virtual bool OnLoaded();
+	virtual void OnDestroy();
+	virtual bool OnCommand(uint32 id, uint32 extcode);
+	virtual bool OnTimer(uint32 id);
 
-		long	lAudioFrames;
-		long	lAudioMinSize;
-		sint64	i64AudioTotalSize;
-		long	lAudioMaxSize;
-
-		long	lAudioPreload;
-
-		bool	bAudioFramesIndeterminate;
+	enum {
+		kUpdateTimerId = 100
 	};
+
+	vdrefptr<InputFileAVI> mpFile;
+	vdrefptr<IVDVideoSource> mpVideo;
+	vdrefptr<AudioSource> mpAudio;
+
+	VDAtomicInt mbAbortScan;
+
+	long	lVideoKFrames;
+	long	lVideoKMinSize;
+	sint64 i64VideoKTotalSize;
+	long	lVideoKMaxSize;
+	long	lVideoCFrames;
+	long	lVideoCMinSize;
+	sint64	i64VideoCTotalSize;
+	long	lVideoCMaxSize;
+
+	long	lAudioFrames;
+	long	lAudioMinSize;
+	sint64	i64AudioTotalSize;
+	long	lAudioMaxSize;
+
+	long	lAudioPreload;
+
+	bool	bAudioFramesIndeterminate;
+
+};
+
+VDAVIFileInfoDialog::VDAVIFileInfoDialog(InputFileAVI *file)
+	: VDDialogFrameW32(IDD_AVI_INFO)
+	, mpFile(file)
+	, mbAbortScan(false)
+	, lVideoKFrames(0)
+	, lVideoKMinSize(0)
+	, i64VideoKTotalSize(0)
+	, lVideoKMaxSize(0)
+	, lVideoCFrames(0)
+	, lVideoCMinSize(0)
+	, i64VideoCTotalSize(0)
+	, lVideoCMaxSize(0)
+	, lAudioFrames(0)
+	, lAudioMinSize(0)
+	, i64AudioTotalSize(0)
+	, lAudioMaxSize(0)
+	, lAudioPreload(0)
+	, bAudioFramesIndeterminate(false)
+{
+	file->GetVideoSource(0, ~mpVideo);
+	file->GetAudioSource(0, ~mpAudio);
 }
 
-void InputFileAVI::_InfoDlgThread(void *pvInfo) {
-	MyFileInfo *pInfo = (MyFileInfo *)pvInfo;
+VDAVIFileInfoDialog::~VDAVIFileInfoDialog()
+{
+}
+
+void VDAVIFileInfoDialog::ThreadRun() {
 	VDPosition i;
 	uint32 lActualBytes, lActualSamples;
-	VideoSourceAVI *inputVideoAVI = static_cast<VideoSourceAVI *>(&*pInfo->mpVideo);
-	AudioSource *inputAudioAVI = pInfo->mpAudio;
+	VideoSourceAVI *inputVideoAVI = static_cast<VideoSourceAVI *>(&*mpVideo);
+	AudioSource *inputAudioAVI = mpAudio;
 
-	pInfo->lVideoCMinSize = 0x7FFFFFFF;
-	pInfo->lVideoKMinSize = 0x7FFFFFFF;
+	lVideoCMinSize = 0x7FFFFFFF;
+	lVideoKMinSize = 0x7FFFFFFF;
 
 	const VDPosition videoFrameStart	= inputVideoAVI->getStart();
 	const VDPosition videoFrameEnd		= inputVideoAVI->getEnd();
 
 	for(i=videoFrameStart; i<videoFrameEnd; ++i) {
 		if (inputVideoAVI->isKey(i)) {
-			++pInfo->lVideoKFrames;
+			++lVideoKFrames;
 
 			if (!inputVideoAVI->read(i, 1, NULL, 0, &lActualBytes, NULL)) {
-				pInfo->i64VideoKTotalSize += lActualBytes;
-				if (lActualBytes < pInfo->lVideoKMinSize) pInfo->lVideoKMinSize = lActualBytes;
-				if (lActualBytes > pInfo->lVideoKMaxSize) pInfo->lVideoKMaxSize = lActualBytes;
+				i64VideoKTotalSize += lActualBytes;
+				if (lActualBytes < lVideoKMinSize) lVideoKMinSize = lActualBytes;
+				if (lActualBytes > lVideoKMaxSize) lVideoKMaxSize = lActualBytes;
 			}
 		} else {
-			++pInfo->lVideoCFrames;
+			++lVideoCFrames;
 
 			if (!inputVideoAVI->read(i, 1, NULL, 0, &lActualBytes, NULL)) {
-				pInfo->i64VideoCTotalSize += lActualBytes;
-				if (lActualBytes < pInfo->lVideoCMinSize) pInfo->lVideoCMinSize = lActualBytes;
-				if (lActualBytes > pInfo->lVideoCMaxSize) pInfo->lVideoCMaxSize = lActualBytes;
+				i64VideoCTotalSize += lActualBytes;
+				if (lActualBytes < lVideoCMinSize) lVideoCMinSize = lActualBytes;
+				if (lActualBytes > lVideoCMaxSize) lVideoCMaxSize = lActualBytes;
 			}
 		}
 
-		if (pInfo->hWndAbort) {
-			SendMessage(pInfo->hWndAbort, WM_USER+256, 0, 0);
+		if (mbAbortScan)
 			return;
-		}
 	}
 
 	if (inputAudioAVI) {
 		const VDPosition audioFrameStart	= inputAudioAVI->getStart();
 		const VDPosition audioFrameEnd		= inputAudioAVI->getEnd();
 
-		pInfo->lAudioMinSize = 0x7FFFFFFF;
-		pInfo->bAudioFramesIndeterminate = false;
-		pInfo->lAudioPreload = static_cast<VDAudioSourceAVISourced *>(inputAudioAVI)->GetPreloadSamples();
+		lAudioMinSize = 0x7FFFFFFF;
+		bAudioFramesIndeterminate = false;
+		lAudioPreload = static_cast<VDAudioSourceAVISourced *>(inputAudioAVI)->GetPreloadSamples();
 
 		i = audioFrameStart;
 		while(i < audioFrameEnd) {
@@ -693,352 +733,356 @@ void InputFileAVI::_InfoDlgThread(void *pvInfo) {
 				break;
 
 			if (!lActualSamples) {
-				pInfo->bAudioFramesIndeterminate = true;
+				bAudioFramesIndeterminate = true;
 				break;
 			}
 
-			++pInfo->lAudioFrames;
+			++lAudioFrames;
 			i += lActualSamples;
 
-			pInfo->i64AudioTotalSize += lActualBytes;
-			if (lActualBytes < pInfo->lAudioMinSize) pInfo->lAudioMinSize = lActualBytes;
-			if (lActualBytes > pInfo->lAudioMaxSize) pInfo->lAudioMaxSize = lActualBytes;
+			i64AudioTotalSize += lActualBytes;
+			if (lActualBytes < lAudioMinSize) lAudioMinSize = lActualBytes;
+			if (lActualBytes > lAudioMaxSize) lAudioMaxSize = lActualBytes;
 
-			if (pInfo->hWndAbort) {
-				SendMessage(pInfo->hWndAbort, WM_USER+256, 0, 0);
+			if (mbAbortScan)
 				return;
+		}
+	}
+}
+
+bool VDAVIFileInfoDialog::OnLoaded() {
+	VDStringW buf;
+
+	if (mpVideo) {
+		VideoSourceAVI *pvs = static_cast<VideoSourceAVI *>(&*mpVideo);
+
+		SetControlTextF(IDC_VIDEO_FORMAT, L"%dx%d, %.3f fps (%ld \x00B5s)",
+					pvs->getImageFormat()->biWidth,
+					pvs->getImageFormat()->biHeight,
+					pvs->getRate().asDouble(),
+					VDRoundToLong(1000000.0 / pvs->getRate().asDouble()));
+
+		const sint64 length = pvs->getLength();
+		buf.sprintf(L"%lld frames (", length);
+		DWORD ticks = VDRoundToInt(1000.0*length/pvs->getRate().asDouble());
+
+		wchar_t tmp[128];
+		ticks_to_str(tmp, sizeof(tmp)/sizeof(tmp[0]), ticks);
+		tmp[127] = 0;
+		buf += tmp;
+
+		buf.append_sprintf(L".%02d)", (ticks/10)%100);
+		SetControlText(IDC_VIDEO_NUMFRAMES, buf.c_str());
+
+		buf = L"Unknown";
+
+		if (const wchar_t *name = pvs->getDecompressorName()) {
+			buf = name;
+
+			if (buf.size() > 30) {
+				buf.resize(27);
+				buf += L"...";
 			}
+			
+			uint8 fcc[4];
+			*(uint32 *)fcc = pvs->getImageFormat()->biCompression;
+
+			buf += L" (";
+			for(int i=0; i<4; ++i) {
+				uint8 c = fcc[i];
+				if ((uint8)(c - 0x20) >= 0x7f)
+					c = ' ';
+
+				buf += c;
+			}
+
+			buf += ')';
+		} else {
+			const uint32 comp = pvs->getImageFormat()->biCompression;
+
+			if (comp == '2YUY')
+				buf = L"YCbCr 4:2:2 (YUY2)";
+			else if (comp == 'YVYU')
+				buf = L"YCbCr 4:2:2 (UYVY)";
+			else if (comp == '024I')
+				buf = L"YCbCr 4:2:0 planar (I420)";
+			else if (comp == 'VUYI')
+				buf = L"YCbCr 4:2:0 planar (IYUV)";
+			else if (comp == '21VY')
+				buf = L"YCbCr 4:2:0 planar (YV12)";
+			else if (comp == '61VY')
+				buf = L"YCbCr 4:2:2 planar (YV16)";
+			else if (comp == '9UVY')
+				buf = L"YCbCr 4:1:0 planar (YVU9)";
+			else if (comp == '  8Y')
+				buf = L"Monochrome (Y8)";
+			else if (comp == '008Y')
+				buf = L"Monochrome (Y800)";
+			else
+				buf.sprintf(L"Uncompressed RGB%d", pvs->getImageFormat()->biBitCount);
+		}
+
+		SetControlText(IDC_VIDEO_COMPRESSION, buf.c_str());
+	}
+
+	if (mpAudio) {
+		AudioSourceAVI *pAS = static_cast<AudioSourceAVI *>(&*mpAudio);
+		const VDWaveFormat *fmt = pAS->getWaveFormat();
+		DWORD cbwfxTemp;
+		WAVEFORMATEX *pwfxTemp;
+		HACMSTREAM has;
+		HACMDRIVERID hadid;
+		ACMDRIVERDETAILS add;
+		bool fSuccessful = false;
+
+		SetControlTextF(IDC_AUDIO_SAMPLINGRATE, L"%ldHz", fmt->mSamplingRate);
+
+		if (fmt->mChannels == 8)
+			buf = L"7.1";
+		else if (fmt->mChannels == 6)
+			buf = L"5.1";
+		else if (fmt->mChannels > 2)
+			buf.sprintf(L"%d", fmt->mChannels);
+		else
+			buf.sprintf(L"%d (%ls)", fmt->mChannels, fmt->mChannels>1 ? L"Stereo" : L"Mono");
+
+		SetControlText(IDC_AUDIO_CHANNELS, buf.c_str());
+
+		if (fmt->mTag == WAVE_FORMAT_PCM)
+			SetControlTextF(IDC_AUDIO_PRECISION, L"%d-bit", fmt->mSampleBits);
+		else
+			SetControlText(IDC_AUDIO_PRECISION, L"N/A");
+
+		sint64 len = pAS->getLength();
+
+		buf.sprintf(L"%lld samples (", len);
+		uint32 ticks = VDRoundToInt32(1000.0 * len * pAS->getRate().AsInverseDouble());
+
+		wchar_t tmp[128];
+		ticks_to_str(tmp, sizeof(tmp)/sizeof(tmp[0]), ticks);
+		tmp[127] = 0;
+		buf += tmp;
+
+		buf.append_sprintf(L".%02d)", (ticks/10)%100);
+		SetControlText(IDC_AUDIO_LENGTH, buf.c_str());
+
+		////////// Attempt to detect audio compression //////////
+
+		if (fmt->mTag == nsVDWinFormats::kWAVE_FORMAT_EXTENSIBLE) {
+			const nsVDWinFormats::WaveFormatExtensible& wfe = *(const nsVDWinFormats::WaveFormatExtensible *)fmt;
+
+			if (wfe.mGuid == nsVDWinFormats::kKSDATAFORMAT_SUBTYPE_PCM) {
+				SetControlTextF(IDC_AUDIO_COMPRESSION, L"PCM (%d bits real, chmask %x)", wfe.mBitDepth, wfe.mChannelMask);
+			} else {
+				SetControlTextF(IDC_AUDIO_COMPRESSION, L"Unk.: {%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x}"
+					, wfe.mGuid.mData1
+					, wfe.mGuid.mData2
+					, wfe.mGuid.mData3
+					, wfe.mGuid.mData4[0]
+					, wfe.mGuid.mData4[1]
+					, wfe.mGuid.mData4[2]
+					, wfe.mGuid.mData4[3]
+					, wfe.mGuid.mData4[4]
+					, wfe.mGuid.mData4[5]
+					, wfe.mGuid.mData4[6]
+					, wfe.mGuid.mData4[7]);
+			}
+		} else if (fmt->mTag != WAVE_FORMAT_PCM) {
+			// Retrieve maximum format size.
+
+			acmMetrics(NULL, ACM_METRIC_MAX_SIZE_FORMAT, (LPVOID)&cbwfxTemp);
+
+			// Fill out a destination wave format (PCM).
+
+			if (pwfxTemp = (WAVEFORMATEX *)allocmem(cbwfxTemp)) {
+				pwfxTemp->wFormatTag	= WAVE_FORMAT_PCM;
+
+				// Ask ACM to fill out the details.
+
+				if (!acmFormatSuggest(NULL, (WAVEFORMATEX *)fmt, (WAVEFORMATEX *)pwfxTemp, cbwfxTemp, ACM_FORMATSUGGESTF_WFORMATTAG)) {
+					if (!acmStreamOpen(&has, NULL, (WAVEFORMATEX *)fmt, pwfxTemp, NULL, NULL, NULL, ACM_STREAMOPENF_NONREALTIME)) {
+						if (!acmDriverID((HACMOBJ)has, &hadid, 0)) {
+							memset(&add, 0, sizeof add);
+
+							add.cbStruct = sizeof add;
+
+							if (!acmDriverDetails(hadid, &add, 0)) {
+								buf = VDTextAToW(add.szLongName);
+								if (buf.size() > 30) {
+									buf.resize(27);
+									buf += L"...";
+								}
+
+								buf.append_sprintf(L" (0x%04x)", fmt->mTag);
+								SetControlText(IDC_AUDIO_COMPRESSION, buf.c_str());
+
+								fSuccessful = true;
+							}
+						}
+
+						acmStreamClose(has, 0);
+					}
+				}
+
+				freemem(pwfxTemp);
+			}
+
+			if (!fSuccessful)
+				SetControlTextF(IDC_AUDIO_COMPRESSION, L"Unknown (tag %04X)", fmt->mTag);
+		} else {
+			// It's a PCM format...
+
+			SetControlText(IDC_AUDIO_COMPRESSION, L"PCM (Uncompressed)");
 		}
 	}
 
-	pInfo->hWndAbort = (HWND)1;
+	ThreadStart();
+	SetPeriodicTimer(kUpdateTimerId, 250);
+
+	return VDDialogFrameW32::OnLoaded();
 }
 
-INT_PTR APIENTRY InputFileAVI::_InfoDlgProc( HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
-	MyFileInfo *pInfo = (MyFileInfo *)GetWindowLongPtr(hDlg, DWLP_USER);
-	InputFileAVI *thisPtr;
+void VDAVIFileInfoDialog::OnDestroy() {
+	ClearPeriodicTimer(kUpdateTimerId);
 
-	if (pInfo)
-		thisPtr = pInfo->thisPtr;
+	mbAbortScan = true;
+	ThreadWait();
 
-    switch (message)
-    {
-        case WM_INITDIALOG:
-			{
-				char buf[128];
+	VDDialogFrameW32::OnDestroy();
+}
 
-				SetWindowLongPtr(hDlg, DWLP_USER, lParam);
-				pInfo = (MyFileInfo *)lParam;
-				thisPtr = pInfo->thisPtr;
+bool VDAVIFileInfoDialog::OnCommand(uint32 id, uint32 extcode) {
+	if (id == IDC_COPY) {
+		static const uint32 kVideoIds[]={
+			IDC_VIDEO_FORMAT,
+			IDC_VIDEO_NUMFRAMES,
+			IDC_VIDEO_COMPRESSION,
+			IDC_VIDEO_NUMKEYFRAMES,
+			IDC_VIDEO_KEYFRAMESIZES,
+			IDC_VIDEO_NONKEYFRAMESIZES,
+			IDC_VIDEO_DATARATE,
+		};
 
-				if (pInfo->mpVideo) {
-					char *t;
-					VideoSourceAVI *pvs = static_cast<VideoSourceAVI *>(&*pInfo->mpVideo);
+		static const uint32 kAudioIds[]={
+			IDC_AUDIO_SAMPLINGRATE,
+			IDC_AUDIO_CHANNELS,
+			IDC_AUDIO_PRECISION,
+			IDC_AUDIO_COMPRESSION,
+			IDC_AUDIO_LAYOUT,
+			IDC_AUDIO_LENGTH,
+			IDC_AUDIO_FRAMESIZES,
+			IDC_AUDIO_DATARATE,
+		};
 
-					sprintf(buf, "%dx%d, %.3f fps (%ld µs)",
-								pvs->getImageFormat()->biWidth,
-								pvs->getImageFormat()->biHeight,
-								pvs->getRate().asDouble(),
-								VDRoundToLong(1000000.0 / pvs->getRate().asDouble()));
-					SetDlgItemText(hDlg, IDC_VIDEO_FORMAT, buf);
+		VDStringW buf;
+		for(int pass=0; pass<2; ++pass) {
+			const uint32 *ids = pass ? kAudioIds : kVideoIds;
+			const uint32 idcount = pass ? sizeof(kAudioIds)/sizeof(kAudioIds[0]) : sizeof(kVideoIds)/sizeof(kVideoIds[0]);
 
-					const sint64 length = pvs->getLength();
-					t = buf + sprintf(buf, "%I64d frames (", length);
-					DWORD ticks = VDRoundToInt(1000.0*length/pvs->getRate().asDouble());
-					ticks_to_str(t, (buf + sizeof(buf)/sizeof(buf[0])) - t, ticks);
-					sprintf(t+strlen(t),".%02d)", (ticks/10)%100);
-					SetDlgItemText(hDlg, IDC_VIDEO_NUMFRAMES, buf);
+			if (pass == 0) {
+				buf = L"Video:\r\n";
+			} else {
+				buf += L"\r\nAudio:\r\n";
+			}
 
-					VDStringW s;
+			for(uint32 i=0; i<idcount; ++i) {
+				HWND hwndItem = GetControl(ids[i]);
 
-					s = L"Unknown";
+				if (hwndItem) {
+					HWND hwndLabel = GetWindow(hwndItem, GW_HWNDPREV);
 
-					if (const wchar_t *name = pvs->getDecompressorName()) {
-						s = name;
-
-						if (s.size() > 30) {
-							s.resize(27);
-							s += L"...";
-						}
-						
-						uint8 fcc[4];
-						*(uint32 *)fcc = pvs->getImageFormat()->biCompression;
-
-						s += L" (";
-						for(int i=0; i<4; ++i) {
-							uint8 c = fcc[i];
-							if ((uint8)(c - 0x20) >= 0x7f)
-								c = ' ';
-
-							s += c;
-						}
-
-						s += ')';
-					} else {
-						const uint32 comp = pvs->getImageFormat()->biCompression;
-
-						if (comp == '2YUY')
-							s = L"YCbCr 4:2:2 (YUY2)";
-						else if (comp == 'YVYU')
-							s = L"YCbCr 4:2:2 (UYVY)";
-						else if (comp == '024I')
-							s = L"YCbCr 4:2:0 planar (I420)";
-						else if (comp == 'VUYI')
-							s = L"YCbCr 4:2:0 planar (IYUV)";
-						else if (comp == '21VY')
-							s = L"YCbCr 4:2:0 planar (YV12)";
-						else if (comp == '61VY')
-							s = L"YCbCr 4:2:2 planar (YV16)";
-						else if (comp == '9UVY')
-							s = L"YCbCr 4:1:0 planar (YVU9)";
-						else if (comp == '  8Y')
-							s = L"Monochrome (Y8)";
-						else if (comp == '008Y')
-							s = L"Monochrome (Y800)";
-						else
-							s.sprintf(L"Uncompressed RGB%d", pvs->getImageFormat()->biBitCount);
-					}
-
-					HWND hwndItem = GetDlgItem(hDlg, IDC_VIDEO_COMPRESSION);
-					if (hwndItem)
-						VDSetWindowTextFW32(hwndItem, s.c_str());
-				}
-				if (pInfo->mpAudio) {
-					AudioSourceAVI *pAS = static_cast<AudioSourceAVI *>(&*pInfo->mpAudio);
-					const VDWaveFormat *fmt = pAS->getWaveFormat();
-					DWORD cbwfxTemp;
-					WAVEFORMATEX *pwfxTemp;
-					HACMSTREAM has;
-					HACMDRIVERID hadid;
-					ACMDRIVERDETAILS add;
-					bool fSuccessful = false;
-
-					sprintf(buf, "%ldHz", fmt->mSamplingRate);
-					SetDlgItemText(hDlg, IDC_AUDIO_SAMPLINGRATE, buf);
-
-					if (fmt->mChannels == 8)
-						strcpy(buf, "7.1");
-					else if (fmt->mChannels == 6)
-						strcpy(buf, "5.1");
-					else if (fmt->mChannels > 2)
-						sprintf(buf, "%d", fmt->mChannels);
-					else
-						sprintf(buf, "%d (%s)", fmt->mChannels, fmt->mChannels>1 ? "Stereo" : "Mono");
-					SetDlgItemText(hDlg, IDC_AUDIO_CHANNELS, buf);
-
-					if (fmt->mTag == WAVE_FORMAT_PCM) {
-						sprintf(buf, "%d-bit", fmt->mSampleBits);
-						SetDlgItemText(hDlg, IDC_AUDIO_PRECISION, buf);
-					} else
-						SetDlgItemText(hDlg, IDC_AUDIO_PRECISION, "N/A");
-
-					sint64 len = pAS->getLength();
-
-					char *s = buf + sprintf(buf, "%I64d samples (", len);
-					uint32 ticks = VDRoundToInt32(1000.0 * len * pAS->getRate().AsInverseDouble());
-					ticks_to_str(s, (buf + sizeof(buf)/sizeof(buf[0])) - s, ticks);
-					sprintf(s+strlen(s),".%02d)", (ticks/10)%100);
-					SetDlgItemText(hDlg, IDC_AUDIO_LENGTH, buf);
-
-					////////// Attempt to detect audio compression //////////
-
-					if (fmt->mTag == nsVDWinFormats::kWAVE_FORMAT_EXTENSIBLE) {
-						const nsVDWinFormats::WaveFormatExtensible& wfe = *(const nsVDWinFormats::WaveFormatExtensible *)fmt;
-
-						if (wfe.mGuid == nsVDWinFormats::kKSDATAFORMAT_SUBTYPE_PCM) {
-							sprintf(buf, "PCM (%d bits real, chmask %x)", wfe.mBitDepth, wfe.mChannelMask);
-							SetDlgItemText(hDlg, IDC_AUDIO_COMPRESSION, buf);
-						} else {
-							sprintf(buf, "Unk.: {%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x}"
-								, wfe.mGuid.mData1
-								, wfe.mGuid.mData2
-								, wfe.mGuid.mData3
-								, wfe.mGuid.mData4[0]
-								, wfe.mGuid.mData4[1]
-								, wfe.mGuid.mData4[2]
-								, wfe.mGuid.mData4[3]
-								, wfe.mGuid.mData4[4]
-								, wfe.mGuid.mData4[5]
-								, wfe.mGuid.mData4[6]
-								, wfe.mGuid.mData4[7]);
-
-							SetDlgItemText(hDlg, IDC_AUDIO_COMPRESSION, buf);
-						}
-					} else if (fmt->mTag != WAVE_FORMAT_PCM) {
-						// Retrieve maximum format size.
-
-						acmMetrics(NULL, ACM_METRIC_MAX_SIZE_FORMAT, (LPVOID)&cbwfxTemp);
-
-						// Fill out a destination wave format (PCM).
-
-						if (pwfxTemp = (WAVEFORMATEX *)allocmem(cbwfxTemp)) {
-							pwfxTemp->wFormatTag	= WAVE_FORMAT_PCM;
-
-							// Ask ACM to fill out the details.
-
-							if (!acmFormatSuggest(NULL, (WAVEFORMATEX *)fmt, (WAVEFORMATEX *)pwfxTemp, cbwfxTemp, ACM_FORMATSUGGESTF_WFORMATTAG)) {
-								if (!acmStreamOpen(&has, NULL, (WAVEFORMATEX *)fmt, pwfxTemp, NULL, NULL, NULL, ACM_STREAMOPENF_NONREALTIME)) {
-									if (!acmDriverID((HACMOBJ)has, &hadid, 0)) {
-										memset(&add, 0, sizeof add);
-
-										add.cbStruct = sizeof add;
-
-										if (!acmDriverDetails(hadid, &add, 0)) {
-											VDStringA s;
-
-											s = add.szLongName;
-											if (s.size() > 30) {
-												s.resize(27);
-												s += "...";
-											}
-
-											s.append_sprintf(" (0x%04x)", fmt->mTag);
-											SetDlgItemText(hDlg, IDC_AUDIO_COMPRESSION, s.c_str());
-
-											fSuccessful = true;
-										}
-									}
-
-									acmStreamClose(has, 0);
-								}
-							}
-
-							freemem(pwfxTemp);
-						}
-
-						if (!fSuccessful) {
-							char buf[32];
-
-							wsprintf(buf, "Unknown (tag %04X)", fmt->mTag);
-							SetDlgItemText(hDlg, IDC_AUDIO_COMPRESSION, buf);
-						}
-					} else {
-						// It's a PCM format...
-
-						SetDlgItemText(hDlg, IDC_AUDIO_COMPRESSION, "PCM (Uncompressed)");
+					if (hwndLabel) {
+						buf += VDGetWindowTextW32(hwndLabel);
+						buf += L" ";
+						buf += VDGetWindowTextW32(hwndItem);
+						buf += L"\r\n";
 					}
 				}
 			}
+		}
 
-			_beginthread(_InfoDlgThread, 10000, pInfo);
+		VDCopyTextToClipboard(buf.c_str());
 
-			pInfo->statTimer = SetTimer(hDlg, 1, 250, NULL);
+		return true;
+	}
 
-            return (TRUE);
+	return VDDialogFrameW32::OnCommand(id, extcode);
+}
 
-        case WM_COMMAND:                      
-            if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) 
-            {
-				if (pInfo->hWndAbort == (HWND)1)
-					EndDialog(hDlg, TRUE);
-				else
-					pInfo->hWndAbort = hDlg;
-                return TRUE;
-            }
-            break;
+bool VDAVIFileInfoDialog::OnTimer(uint32 id) {
+	if (id != kUpdateTimerId)
+		return VDDialogFrameW32::OnTimer(id);
 
-		case WM_DESTROY:
-			if (pInfo->statTimer) KillTimer(hDlg, pInfo->statTimer);
-			break;
+	SetControlTextF(IDC_VIDEO_NUMKEYFRAMES, L"%ld", lVideoKFrames);
 
-		case WM_TIMER:
-			{
-				char buf[128];
+	if (lVideoKFrames)
+		SetControlTextF(IDC_VIDEO_KEYFRAMESIZES, L"%ld/%lld/%ld (%lldK)"
+					,lVideoKMinSize
+					,i64VideoKTotalSize/lVideoKFrames
+					,lVideoKMaxSize
+					,(i64VideoKTotalSize+1023)>>10);
+	else
+		SetControlText(IDC_VIDEO_KEYFRAMESIZES, L"(no key frames)");
 
-				sprintf(buf, "%ld", pInfo->lVideoKFrames);
-				SetDlgItemText(hDlg, IDC_VIDEO_NUMKEYFRAMES, buf);
+	if (lVideoCFrames)
+		SetControlTextF(IDC_VIDEO_NONKEYFRAMESIZES, L"%ld/%lld/%ld (%lldK)"
+					,lVideoCMinSize
+					,i64VideoCTotalSize/lVideoCFrames
+					,lVideoCMaxSize
+					,(i64VideoCTotalSize+1023)>>10);
+	else
+		SetControlText(IDC_VIDEO_NONKEYFRAMESIZES, L"(no delta frames)");
 
-				if (pInfo->lVideoKFrames)
-					sprintf(buf, "%ld/%I64d/%ld (%I64dK)"
-								,pInfo->lVideoKMinSize
-								,pInfo->i64VideoKTotalSize/pInfo->lVideoKFrames
-								,pInfo->lVideoKMaxSize
-								,(pInfo->i64VideoKTotalSize+1023)>>10);
-				else
-					strcpy(buf,"(no key frames)");
-				SetDlgItemText(hDlg, IDC_VIDEO_KEYFRAMESIZES, buf);
+	if (mpAudio) {
+		if (bAudioFramesIndeterminate) {
+			SetControlText(IDC_AUDIO_NUMFRAMES, L"(indeterminate)");
+			SetControlText(IDC_AUDIO_FRAMESIZES, L"(indeterminate)");
+			SetControlText(IDC_AUDIO_PRELOAD, L"(indeterminate)");
+		} else {
 
-				if (pInfo->lVideoCFrames)
-					sprintf(buf, "%ld/%I64d/%ld (%I64dK)"
-								,pInfo->lVideoCMinSize
-								,pInfo->i64VideoCTotalSize/pInfo->lVideoCFrames
-								,pInfo->lVideoCMaxSize
-								,(pInfo->i64VideoCTotalSize+1023)>>10);
-				else
-					strcpy(buf,"(no delta frames)");
-				SetDlgItemText(hDlg, IDC_VIDEO_NONKEYFRAMESIZES, buf);
+			if (lAudioFrames)
+				SetControlTextF(IDC_AUDIO_FRAMESIZES, L"%ld/%I64d/%ld (%I64dK)"
+						,lAudioMinSize
+						,i64AudioTotalSize/lAudioFrames
+						,lAudioMaxSize
+						,(i64AudioTotalSize+1023)>>10);
+			else
+				SetControlText(IDC_AUDIO_FRAMESIZES, L"(no audio frames)");
 
-				if (pInfo->mpAudio) {
-					if (pInfo->bAudioFramesIndeterminate) {
-						SetDlgItemText(hDlg, IDC_AUDIO_NUMFRAMES, "(indeterminate)");
-						SetDlgItemText(hDlg, IDC_AUDIO_FRAMESIZES, "(indeterminate)");
-						SetDlgItemText(hDlg, IDC_AUDIO_PRELOAD, "(indeterminate)");
-					} else {
+			const VDWaveFormat *pWaveFormat = mpAudio->getWaveFormat();
 
-						if (pInfo->lAudioFrames)
-							sprintf(buf, "%ld/%I64d/%ld (%I64dK)"
-									,pInfo->lAudioMinSize
-									,pInfo->i64AudioTotalSize/pInfo->lAudioFrames
-									,pInfo->lAudioMaxSize
-									,(pInfo->i64AudioTotalSize+1023)>>10);
-						else
-							strcpy(buf,"(no audio frames)");
-						SetDlgItemText(hDlg, IDC_AUDIO_FRAMESIZES, buf);
+			SetControlTextF(IDC_AUDIO_LAYOUT, L"%ld chunks (%.2fs preload)", lAudioFrames,
+				(double)lAudioPreload * mpAudio->getRate().AsInverseDouble()
+					);
 
-						const VDWaveFormat *pWaveFormat = pInfo->mpAudio->getWaveFormat();
+			const double audioRate = (double)pWaveFormat->mDataRate * (1.0 / 125.0);
+			const double rawOverhead = 24.0 * lAudioFrames;
+			const double audioOverhead = 100.0 * rawOverhead / (rawOverhead + i64AudioTotalSize);
+			SetControlTextF(IDC_AUDIO_DATARATE, L"%.0f kbps (%.2f%% overhead)", audioRate, audioOverhead);
+		}
+	}
 
-						sprintf(buf, "%ld chunks (%.2fs preload)", pInfo->lAudioFrames,
-							(double)pInfo->lAudioPreload * pInfo->mpAudio->getRate().AsInverseDouble()
-								);
-						SetDlgItemText(hDlg, IDC_AUDIO_LAYOUT, buf);
+	double totalVideoFrames = (double)lVideoKFrames + (sint64)lVideoCFrames;
+	if (totalVideoFrames > 0) {
+		VideoSourceAVI *pvs = static_cast<VideoSourceAVI *>(&*mpVideo);
+		const double seconds = (double)pvs->getLength() / (double)pvs->getRate().asDouble();
+		const double rawOverhead = (24.0 * totalVideoFrames);
+		const double totalSize = (double)(i64VideoKTotalSize + i64VideoCTotalSize);
+		const double videoRate = (1.0 / 125.0) * totalSize / seconds;
+		const double videoOverhead = totalSize > 0 ? 100.0 * rawOverhead / (rawOverhead + totalSize) : 0;
+		SetControlTextF(IDC_VIDEO_DATARATE, L"%.0f kbps (%.2f%% overhead)", videoRate, videoOverhead);
+	}
 
-						const double audioRate = (double)pWaveFormat->mDataRate * (1.0 / 125.0);
-						const double rawOverhead = 24.0 * pInfo->lAudioFrames;
-						const double audioOverhead = 100.0 * rawOverhead / (rawOverhead + pInfo->i64AudioTotalSize);
-						sprintf(buf, "%.0f kbps (%.2f%% overhead)", audioRate, audioOverhead);
-						SetDlgItemText(hDlg, IDC_AUDIO_DATARATE, buf);
-					}
-				}
+	if (!isThreadActive())
+		ClearPeriodicTimer(kUpdateTimerId);
 
-				double totalVideoFrames = (double)pInfo->lVideoKFrames + (sint64)pInfo->lVideoCFrames;
-				if (totalVideoFrames > 0) {
-					VideoSourceAVI *pvs = static_cast<VideoSourceAVI *>(&*pInfo->mpVideo);
-					const double seconds = (double)pvs->getLength() / (double)pvs->getRate().asDouble();
-					const double rawOverhead = (24.0 * totalVideoFrames);
-					const double totalSize = (double)(pInfo->i64VideoKTotalSize + pInfo->i64VideoCTotalSize);
-					const double videoRate = (1.0 / 125.0) * totalSize / seconds;
-					const double videoOverhead = totalSize > 0 ? 100.0 * rawOverhead / (rawOverhead + totalSize) : 0;
-					sprintf(buf, "%.0f kbps (%.2f%% overhead)", videoRate, videoOverhead);
-					SetDlgItemText(hDlg, IDC_VIDEO_DATARATE, buf);
-				}
-			}
-
-			/////////
-
-			if (pInfo->hWndAbort) {
-				KillTimer(hDlg, pInfo->statTimer);
-				return TRUE;
-			}
-
-			break;
-
-		case WM_USER+256:
-			EndDialog(hDlg, TRUE);  
-			break;
-    }
-    return FALSE;
+	return true;
 }
 
 void InputFileAVI::InfoDialog(VDGUIHandle hwndParent) {
-	MyFileInfo mai;
+	VDAVIFileInfoDialog dlg(this);
 
-	memset(&mai, 0, sizeof mai);
-	mai.thisPtr = this;
-
-	GetVideoSource(0, ~mai.mpVideo);
-	GetAudioSource(0, ~mai.mpAudio);
-
-	DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_AVI_INFO), (HWND)hwndParent, _InfoDlgProc, (LPARAM)&mai);
+	dlg.ShowDialog(hwndParent);
 }
 
 void InputFileAVI::Attach(VDAVIStreamSource *p) {

@@ -2205,8 +2205,6 @@ void VDProjectUI::UpdateMainMenu(HMENU hMenu) {
 	VDEnableMenuItemW32(hMenu, ID_FILE_SAVEANIMATEDGIF		, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_FILE_SAVERAWAUDIO			, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_FILE_SAVERAWVIDEO			, bSourceFileExists);
-	VDEnableMenuItemW32(hMenu, ID_FILE_SAVESTRIPEDAVI       , bSourceFileExists);
-	VDEnableMenuItemW32(hMenu, ID_FILE_SAVESTRIPEMASTER     , bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_FILE_CLOSEAVI				, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_FILE_STARTSERVER			, bSourceFileExists);
 	VDEnableMenuItemW32(hMenu, ID_FILE_AVIINFO				, bSourceFileExists);

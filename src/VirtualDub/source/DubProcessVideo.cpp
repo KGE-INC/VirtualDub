@@ -97,6 +97,7 @@ VDDubVideoProcessor::VDDubVideoProcessor()
 	, mpDisplayBufferTracker(NULL)
 	, mFramesToDrop(0)
 	, mpProcDisplay(NULL)
+	, mThreadPriority(VDThread::kPriorityDefault)
 {
 }
 
@@ -118,6 +119,18 @@ int VDDubVideoProcessor::AddRef() {
 
 int VDDubVideoProcessor::Release() {
 	return 1;
+}
+
+void VDDubVideoProcessor::SetPriority(int priority) {
+	if (mThreadPriority != priority) {
+		mThreadPriority = priority;
+
+		if (mpThreadedVideoCompressor)
+			mpThreadedVideoCompressor->SetPriority(mThreadPriority);
+
+		if (mpVideoFilters)
+			mpVideoFilters->SetAsyncThreadPriority(mThreadPriority);
+	}
 }
 
 void VDDubVideoProcessor::PreInit() {

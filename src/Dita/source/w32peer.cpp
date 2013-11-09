@@ -66,7 +66,9 @@ void VDUIPeerW32::SetFocus() {
 
 void VDUIPeerW32::SetCaption(const wchar_t *caption) {
 	VDUIWindow::SetCaption(caption);
-	VDSetWindowTextW32(mhwnd, mCaption.c_str());
+
+	if (mhwnd)
+		VDSetWindowTextW32(mhwnd, mCaption.c_str());
 }
 
 vduirect VDUIPeerW32::GetArea() {

@@ -92,6 +92,8 @@ public:
 	void SetVideoOutput(IVDMediaOutputStream *out, bool enableImageOutput);
 	void SetPreviewClock(VDDubPreviewClock *clock);
 
+	void SetPriority(int priority);
+
 	void PreInit();
 	void Init();
 	void PreShutdown();
@@ -237,6 +239,8 @@ protected:
 
 	uint32				mFramesToDrop;
 	VDDubVideoProcessorDisplay	*mpProcDisplay;
+
+	int mThreadPriority;
 
 	VDDelegate	mVideoRequestQueueDelegate;
 	VDDelegate	mVideoPipeDelegate;

@@ -60,6 +60,7 @@ public:
 
 	/// Set the number of async threads to use. -1 disables, 0 is auto.
 	void SetAsyncThreadCount(sint32 threadsToUse);
+	void SetAsyncThreadPriority(int priority);
 
 	void prepareLinearChain(VDFilterChainDesc *desc, uint32 src_width, uint32 src_height, int src_format, const VDFraction& sourceFrameRate, sint64 sourceFrameCount, const VDFraction& sourcePixelAspect);
 	void initLinearChain(IVDFilterSystemScheduler *scheduler, uint32 filterStateFlags, VDFilterChainDesc *desc, IVDFilterFrameSource *src, uint32 src_width, uint32 src_height, int src_format, const uint32 *palette, const VDFraction& sourceFrameRate, sint64 sourceFrameCount, const VDFraction& sourcePixelAspect);
@@ -122,6 +123,7 @@ private:
 	bool	mbAccelDebugVisual;
 	bool	mbAccelEnabled;
 	sint32	mThreadsRequested;
+	int		mThreadPriority;
 
 	VDFraction	mOutputFrameRate;
 	VDFraction	mOutputPixelAspect;

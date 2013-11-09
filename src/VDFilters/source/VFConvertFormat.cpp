@@ -22,62 +22,8 @@
 #include <vd2/VDXFrame/VideoFilter.h>
 #include <vd2/Kasumi/pixmaputils.h>
 
-class VDVFilterConvertFormatConfigDialog : public VDDialogFrameW32 {
-public:
-	VDVFilterConvertFormatConfigDialog(int format);
-
-	int GetFormat() const { return mFormat; }
-
-	bool OnLoaded();
-	void OnDataExchange(bool write);
-
-protected:
-	int mFormat;
-};
-
-VDVFilterConvertFormatConfigDialog::VDVFilterConvertFormatConfigDialog(int format)
-	: VDDialogFrameW32(IDD_FILTER_CONVERTFORMAT)
-	, mFormat(format)
-{
-}
-
-bool VDVFilterConvertFormatConfigDialog::OnLoaded() {
-	LBAddString(IDC_FORMATS, L"32-bit RGB");
-
-	static const wchar_t *const kYUVFormats[]={
-		L"4:4:4 planar YCbCr (YV24)",
-		L"4:2:2 planar YCbCr (YV16)",
-		L"4:2:0 planar YCbCr (YV12)",
-		L"4:1:1 planar YCbCr",
-		L"4:1:0 planar YCbCr (YVU9)",
-		L"4:2:2 interleaved YCbCr (UYVY)",
-		L"4:2:2 interleaved YCbCr (YUY2)",
-	};
-
-	VDStringW s;
-	for(int i=0; i<4; ++i)
-	{
-		for(size_t j=0; j<sizeof(kYUVFormats)/sizeof(kYUVFormats[0]); ++j) {
-			s = kYUVFormats[j];
-
-			if (i & 1)
-				s += L" (Rec. 709)";
-
-			if (i & 2)
-				s += L" (full range)";
-
-			LBAddString(IDC_FORMATS, s.c_str());
-		}
-	}
-
-	SetFocusToControl(IDC_FORMATS);
-
-	VDDialogFrameW32::OnLoaded();
-	return true;
-}
-
-void VDVFilterConvertFormatConfigDialog::OnDataExchange(bool write) {
-	static const int kFormats[]={
+namespace {
+	const int kFormats[]={
 		nsVDXPixmap::kPixFormat_XRGB8888,
 		nsVDXPixmap::kPixFormat_YUV444_Planar,
 		nsVDXPixmap::kPixFormat_YUV422_Planar,
@@ -112,6 +58,61 @@ void VDVFilterConvertFormatConfigDialog::OnDataExchange(bool write) {
 		nsVDXPixmap::kPixFormat_YUV422_YUYV_709_FR,
 	};
 
+	const wchar_t *const kYUVFormats[]={
+		L"4:4:4 planar YCbCr (YV24)",
+		L"4:2:2 planar YCbCr (YV16)",
+		L"4:2:0 planar YCbCr (YV12)",
+		L"4:1:1 planar YCbCr",
+		L"4:1:0 planar YCbCr (YVU9)",
+		L"4:2:2 interleaved YCbCr (UYVY)",
+		L"4:2:2 interleaved YCbCr (YUY2)",
+	};
+}
+
+class VDVFilterConvertFormatConfigDialog : public VDDialogFrameW32 {
+public:
+	VDVFilterConvertFormatConfigDialog(int format);
+
+	int GetFormat() const { return mFormat; }
+
+	bool OnLoaded();
+	void OnDataExchange(bool write);
+
+protected:
+	int mFormat;
+};
+
+VDVFilterConvertFormatConfigDialog::VDVFilterConvertFormatConfigDialog(int format)
+	: VDDialogFrameW32(IDD_FILTER_CONVERTFORMAT)
+	, mFormat(format)
+{
+}
+
+bool VDVFilterConvertFormatConfigDialog::OnLoaded() {
+	LBAddString(IDC_FORMATS, L"32-bit RGB");
+
+	VDStringW s;
+	for(int i=0; i<4; ++i) {
+		for(size_t j=0; j<sizeof(kYUVFormats)/sizeof(kYUVFormats[0]); ++j) {
+			s = kYUVFormats[j];
+
+			if (i & 1)
+				s += L" (Rec. 709)";
+
+			if (i & 2)
+				s += L" (full range)";
+
+			LBAddString(IDC_FORMATS, s.c_str());
+		}
+	}
+
+	SetFocusToControl(IDC_FORMATS);
+
+	VDDialogFrameW32::OnLoaded();
+	return true;
+}
+
+void VDVFilterConvertFormatConfigDialog::OnDataExchange(bool write) {
 	if (write) {
 		int idx = LBGetSelectedIndex(IDC_FORMATS);
 
@@ -180,44 +181,104 @@ bool VDVFilterConvertFormat::Configure(VDXHWND hwnd) {
 }
 
 void VDVFilterConvertFormat::GetSettingString(char *buf, int maxlen) {
-	const char *formatname;
+	VDStringA s;
 
 	switch(mFormat) {
 		case nsVDXPixmap::kPixFormat_XRGB8888:
 		default:
-			formatname = "RGB32";
+			s = "RGB32";
 			break;
 
 		case nsVDXPixmap::kPixFormat_YUV444_Planar:
-			formatname = "YV24";
+		case nsVDXPixmap::kPixFormat_YUV444_Planar_FR:
+		case nsVDXPixmap::kPixFormat_YUV444_Planar_709:
+		case nsVDXPixmap::kPixFormat_YUV444_Planar_709_FR:
+			s = "YV24";
 			break;
 
 		case nsVDXPixmap::kPixFormat_YUV422_Planar:
-			formatname = "YV16";
+		case nsVDXPixmap::kPixFormat_YUV422_Planar_FR:
+		case nsVDXPixmap::kPixFormat_YUV422_Planar_709:
+		case nsVDXPixmap::kPixFormat_YUV422_Planar_709_FR:
+			s = "YV16";
 			break;
 
 		case nsVDXPixmap::kPixFormat_YUV420_Planar:
-			formatname = "YV12";
+		case nsVDXPixmap::kPixFormat_YUV420_Planar_FR:
+		case nsVDXPixmap::kPixFormat_YUV420_Planar_709:
+		case nsVDXPixmap::kPixFormat_YUV420_Planar_709_FR:
+			s = "YV12";
 			break;
 
 		case nsVDXPixmap::kPixFormat_YUV411_Planar:
-			formatname = "YUV411";
+		case nsVDXPixmap::kPixFormat_YUV411_Planar_FR:
+		case nsVDXPixmap::kPixFormat_YUV411_Planar_709:
+		case nsVDXPixmap::kPixFormat_YUV411_Planar_709_FR:
+			s = "YUV411";
 			break;
 
 		case nsVDXPixmap::kPixFormat_YUV410_Planar:
-			formatname = "YVU9";
+		case nsVDXPixmap::kPixFormat_YUV410_Planar_FR:
+		case nsVDXPixmap::kPixFormat_YUV410_Planar_709:
+		case nsVDXPixmap::kPixFormat_YUV410_Planar_709_FR:
+			s = "YVU9";
 			break;
 
 		case nsVDXPixmap::kPixFormat_YUV422_UYVY:
-			formatname = "UYVY";
+		case nsVDXPixmap::kPixFormat_YUV422_UYVY_FR:
+		case nsVDXPixmap::kPixFormat_YUV422_UYVY_709:
+		case nsVDXPixmap::kPixFormat_YUV422_UYVY_709_FR:
+			s = "UYVY";
 			break;
 
 		case nsVDXPixmap::kPixFormat_YUV422_YUYV:
-			formatname = "YUY2";
+		case nsVDXPixmap::kPixFormat_YUV422_YUYV_FR:
+		case nsVDXPixmap::kPixFormat_YUV422_YUYV_709:
+		case nsVDXPixmap::kPixFormat_YUV422_YUYV_709_FR:
+			s = "YUY2";
 			break;
 	}
 
-	_snprintf(buf, maxlen, " (%s)", formatname);
+	switch(mFormat) {
+		case nsVDXPixmap::kPixFormat_YUV444_Planar_709:
+		case nsVDXPixmap::kPixFormat_YUV422_Planar_709:
+		case nsVDXPixmap::kPixFormat_YUV420_Planar_709:
+		case nsVDXPixmap::kPixFormat_YUV411_Planar_709:
+		case nsVDXPixmap::kPixFormat_YUV410_Planar_709:
+		case nsVDXPixmap::kPixFormat_YUV422_UYVY_709:
+		case nsVDXPixmap::kPixFormat_YUV422_YUYV_709:
+
+		case nsVDXPixmap::kPixFormat_YUV444_Planar_709_FR:
+		case nsVDXPixmap::kPixFormat_YUV422_Planar_709_FR:
+		case nsVDXPixmap::kPixFormat_YUV420_Planar_709_FR:
+		case nsVDXPixmap::kPixFormat_YUV411_Planar_709_FR:
+		case nsVDXPixmap::kPixFormat_YUV410_Planar_709_FR:
+		case nsVDXPixmap::kPixFormat_YUV422_UYVY_709_FR:
+		case nsVDXPixmap::kPixFormat_YUV422_YUYV_709_FR:
+			s += "-709";
+			break;
+	}
+
+	switch(mFormat) {
+		case nsVDXPixmap::kPixFormat_YUV444_Planar_FR:
+		case nsVDXPixmap::kPixFormat_YUV422_Planar_FR:
+		case nsVDXPixmap::kPixFormat_YUV420_Planar_FR:
+		case nsVDXPixmap::kPixFormat_YUV411_Planar_FR:
+		case nsVDXPixmap::kPixFormat_YUV410_Planar_FR:
+		case nsVDXPixmap::kPixFormat_YUV422_UYVY_FR:
+		case nsVDXPixmap::kPixFormat_YUV422_YUYV_FR:
+		case nsVDXPixmap::kPixFormat_YUV444_Planar_709_FR:
+		case nsVDXPixmap::kPixFormat_YUV422_Planar_709_FR:
+		case nsVDXPixmap::kPixFormat_YUV420_Planar_709_FR:
+		case nsVDXPixmap::kPixFormat_YUV411_Planar_709_FR:
+		case nsVDXPixmap::kPixFormat_YUV410_Planar_709_FR:
+		case nsVDXPixmap::kPixFormat_YUV422_UYVY_709_FR:
+		case nsVDXPixmap::kPixFormat_YUV422_YUYV_709_FR:
+			s += "-FR";
+			break;
+	}
+
+	SafePrintf(buf, maxlen, " (%s)", s.c_str());
 }
 
 void VDVFilterConvertFormat::GetScriptString(char *buf, int maxlen) {
@@ -227,21 +288,10 @@ void VDVFilterConvertFormat::GetScriptString(char *buf, int maxlen) {
 void VDVFilterConvertFormat::ScriptConfig(IVDXScriptInterpreter *, const VDXScriptValue *argv, int argc) {
 	mFormat = argv[0].asInt();
 
-	switch(mFormat) {
-		case nsVDXPixmap::kPixFormat_XRGB8888:
-		case nsVDXPixmap::kPixFormat_YUV444_Planar:
-		case nsVDXPixmap::kPixFormat_YUV422_Planar:
-		case nsVDXPixmap::kPixFormat_YUV420_Planar:
-		case nsVDXPixmap::kPixFormat_YUV411_Planar:
-		case nsVDXPixmap::kPixFormat_YUV410_Planar:
-		case nsVDXPixmap::kPixFormat_YUV422_UYVY:
-		case nsVDXPixmap::kPixFormat_YUV422_YUYV:
-			break;
-
-		default:
-			mFormat = nsVDXPixmap::kPixFormat_XRGB8888;
-			break;
-	}
+	const int *begin = kFormats;
+	const int *end = kFormats + sizeof(kFormats)/sizeof(kFormats[0]);
+	if (std::find(begin, end, mFormat) == end)
+		mFormat = nsVDXPixmap::kPixFormat_XRGB8888;
 }
 
 VDXVF_BEGIN_SCRIPT_METHODS(VDVFilterConvertFormat)

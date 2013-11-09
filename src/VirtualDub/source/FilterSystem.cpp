@@ -200,6 +200,7 @@ FilterSystem::FilterSystem()
 	, mbAccelEnabled(false)
 	, mbAccelDebugVisual(false)
 	, mThreadsRequested(-1)
+	, mThreadPriority(VDThread::kPriorityDefault)
 	, mOutputFrameRate(0, 0)
 	, mOutputFrameCount(0)
 	, mpBitmaps(new Bitmaps)
@@ -226,6 +227,13 @@ void FilterSystem::SetVisualAccelDebugEnabled(bool enable) {
 
 void FilterSystem::SetAsyncThreadCount(sint32 threadsToUse) {
 	mThreadsRequested = threadsToUse;
+}
+
+void FilterSystem::SetAsyncThreadPriority(int priority) {
+	mThreadPriority = priority;
+
+	if (mpBitmaps->mpProcessSchedulerThreadPool)
+		mpBitmaps->mpProcessSchedulerThreadPool->SetPriority(mThreadPriority);
 }
 
 // prepareLinearChain(): init bitmaps in a linear filtering system
@@ -950,6 +958,7 @@ void FilterSystem::ReadyFilters() {
 		}
 
 		mpBitmaps->mpProcessSchedulerThreadPool = new VDSchedulerThreadPool;
+		mpBitmaps->mpProcessSchedulerThreadPool->SetPriority(mThreadPriority);
 		mpBitmaps->mpProcessSchedulerThreadPool->Start(mpBitmaps->mpProcessScheduler, threadsToUse);
 	}
 

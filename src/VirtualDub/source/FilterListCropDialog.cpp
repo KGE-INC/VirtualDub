@@ -86,7 +86,7 @@ bool VDFilterClippingDialog::OnLoaded()  {
 
 	if (mpFilterChainDesc && inputVideo) {
 		IVDStreamSource *pVSS = inputVideo->asStream();
-		const VDAVIBitmapInfoHeader *pbih2 = inputVideo->getDecompressedFormat();
+		const VDPixmap& px = inputVideo->getTargetFormat();
 
 		try {
 			// halt the main filter system
@@ -96,8 +96,8 @@ bool VDFilterClippingDialog::OnLoaded()  {
 			const VDPixmap& pxsrc = inputVideo->getTargetFormat();
 			mFilterSys.prepareLinearChain(
 					mpFilterChainDesc,
-					pbih2->biWidth,
-					abs(pbih2->biHeight),
+					px.w,
+					px.h,
 					pxsrc.format,
 					pVSS->getRate(),
 					pVSS->getLength(),
@@ -112,8 +112,8 @@ bool VDFilterClippingDialog::OnLoaded()  {
 					VDXFilterStateInfo::kStatePreview,
 					mpFilterChainDesc,
 					mpFrameSource,
-					pbih2->biWidth,
-					abs(pbih2->biHeight),
+					px.w,
+					abs(px.h),
 					pxsrc.format,
 					pxsrc.palette,
 					pVSS->getRate(),

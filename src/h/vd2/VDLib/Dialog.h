@@ -90,6 +90,7 @@ protected:
 	void SignalFailedValidation(uint32 id);
 
 	void SetPeriodicTimer(uint32 id, uint32 msperiod);
+	void ClearPeriodicTimer(uint32 id);
 
 	void ShowWarning(const wchar_t *message, const wchar_t *caption);
 	void ShowError(const wchar_t *message, const wchar_t *caption);

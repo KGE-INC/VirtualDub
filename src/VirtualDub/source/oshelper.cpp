@@ -359,6 +359,64 @@ VDStringW VDGetLocalAppDataPath() {
 	}
 }
 
+void VDCopyTextToClipboardA(const char *s) {
+	if (!OpenClipboard(NULL))
+		return;
+
+	if (EmptyClipboard()) {
+		HANDLE hMem;
+		size_t len = strlen(s) + 1;
+		if (hMem = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, len)) {
+			void *lpvMem;
+			if (lpvMem = GlobalLock(hMem)) {
+				memcpy(lpvMem, s, len);
+
+				GlobalUnlock(lpvMem);
+				SetClipboardData(CF_TEXT, hMem);
+				CloseClipboard();
+				return;
+			}
+			GlobalFree(hMem);
+		}
+	}
+
+	CloseClipboard();
+}
+
+void VDCopyTextToClipboardW(const wchar_t *s) {
+	if (!OpenClipboard(NULL))
+		return;
+
+	if (EmptyClipboard()) {
+		HANDLE hMem;
+		size_t len = sizeof(wchar_t) * (wcslen(s) + 1);
+		if (hMem = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, len)) {
+			void *lpvMem;
+			if (lpvMem = GlobalLock(hMem)) {
+				memcpy(lpvMem, s, len);
+
+				GlobalUnlock(lpvMem);
+				SetClipboardData(CF_UNICODETEXT, hMem);
+				CloseClipboard();
+				return;
+			}
+			GlobalFree(hMem);
+		}
+	}
+
+	CloseClipboard();
+}
+
+void VDCopyTextToClipboard(const wchar_t *s) {
+	if (VDIsWindowsNT())
+		VDCopyTextToClipboardW(s);
+	else {
+		VDStringA sa(VDTextWToA(s));
+
+		VDCopyTextToClipboardA(sa.c_str());
+	}
+}
+
 uint32 VDCreateAutoSaveSignature() {
 	FILETIME ft;
 	::GetSystemTimeAsFileTime(&ft);

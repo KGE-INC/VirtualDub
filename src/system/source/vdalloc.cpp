@@ -1,10 +1,10 @@
 //	VirtualDub - Video processing and capture application
-//	Plugin headers
-//	Copyright (C) 1998-2007 Avery Lee, All Rights Reserved.
+//	System library component
+//	Copyright (C) 1998-2012 Avery Lee, All Rights Reserved.
 //
-//	The plugin headers in the VirtualDub plugin SDK are licensed differently
-//	differently than VirtualDub and the Plugin SDK themselves.  This
-//	particular file is thus licensed as follows (the "zlib" license):
+//	Beginning with 1.6.0, the VirtualDub system library is licensed
+//	differently than the remainder of VirtualDub.  This particular file is
+//	thus licensed as follows (the "zlib" license):
 //
 //	This software is provided 'as-is', without any express or implied
 //	warranty.  In no event will the authors be held liable for any
@@ -23,15 +23,7 @@
 //	3.	This notice may not be removed or altered from any source
 //		distribution.
 
-#ifndef f_VD2_PLUGIN_VDMODULE_H
-#define f_VD2_PLUGIN_VDMODULE_H
+#include "stdafx.h"
+#include <vd2/system/vdalloc.h>
 
-#include <vd2/plugin/vdplugin.h>
-
-#ifndef VDXAPIENTRY
-	#define VDXAPIENTRY __stdcall
-#endif
-
-typedef void (VDXAPIENTRY *VDXGetModuleInfo)
-
-#endif
+vdsafedelete_t vdsafedelete;

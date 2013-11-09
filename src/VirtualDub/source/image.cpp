@@ -327,7 +327,7 @@ void DecodeTGA(const void *pBuffer, long cbBuffer, const VDPixmap& vb) {
 			c &= 0x7f;
 
 			if (dst == dstEnd) {
-				if (!(hdr.AttBits & 0x20))
+				if (hdr.AttBits & 0x20)
 					BitBltAlpha(vb, 0, y, vbSrc, 0, 0, w, 1, bSrcHasAlpha);
 				else
 					BitBltAlpha(vb, 0, h-1-y, vbSrc, 0, 0, w, 1, bSrcHasAlpha);

@@ -508,6 +508,10 @@ void VDDialogFrameW32::SetPeriodicTimer(uint32 id, uint32 msperiod) {
 	::SetTimer(mhdlg, id, msperiod, NULL);
 }
 
+void VDDialogFrameW32::ClearPeriodicTimer(uint32 id) {
+	::KillTimer(mhdlg, id);
+}
+
 void VDDialogFrameW32::ShowWarning(const wchar_t *message, const wchar_t *caption) {
 	if (VDIsWindowsNT())
 		::MessageBoxW(mhdlg, message, caption, MB_OK | MB_ICONWARNING);

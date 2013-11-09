@@ -338,7 +338,7 @@ bool VDMakeBitmapFormatFromPixmapFormat(vdstructex<VDAVIBitmapInfoHeader>& dst, 
 		break;
 	case kPixFormat_YUV420_NV12:
 		dst->biCompression	= VDMAKEFOURCC('N', 'V', '1', '2');
-		dst->biBitCount		= 16;
+		dst->biBitCount		= 12;
 		dst->biSizeImage	= w*h + ((w+1)>>1)*((h+1)>>1)*2;
 		break;
 	case kPixFormat_Y8_FR:

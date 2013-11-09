@@ -241,6 +241,8 @@ INT_PTR CALLBACK CaptureSpillDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM 
 			hwndItem = GetDlgItem(hdlg, IDC_SPILL_DRIVES);
 			GetClientRect(hwndItem, &r);
 
+			ListView_SetExtendedListViewStyleEx(hwndItem, LVS_EX_FULLROWSELECT, LVS_EX_FULLROWSELECT);
+
 			lvc.mask	= LVCF_FMT | LVCF_TEXT | LVCF_WIDTH;
 			lvc.fmt		= LVCFMT_LEFT;
 			lvc.cx		= 50;

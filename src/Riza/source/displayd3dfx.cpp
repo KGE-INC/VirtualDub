@@ -935,39 +935,30 @@ bool VDVideoDisplayMinidriverD3DFX::UpdateBackbuffer(const RECT& rClient0, Updat
 	uint64 startTime = VDGetPreciseTick();
 	RECT rClient = rClient0;
 
-	int rtw = mpManager->GetMainRTWidth();
-	int rth = mpManager->GetMainRTHeight();
-	if (mbFullScreen) {
-		rClient.right = rtw;
-		rClient.bottom = rth;
-	}
-	RECT rClippedClient={0,0,std::min<int>(rClient.right, mpManager->GetMainRTWidth()), std::min<int>(rClient.bottom, mpManager->GetMainRTHeight())};
-
-	vdsize32 vpsize(rClippedClient.right, rClippedClient.bottom);
-	CreateCustomTextures(false, &vpsize);
+	// Exit immediately if nothing to do.
+	if (!rClient.right || !rClient.bottom)
+		return true;
 
 	// Make sure the device is sane.
 	if (!mpManager->CheckDevice())
 		return false;
 
-	IDirect3DTexture9 *tex = mpUploadContext->GetD3DTexture(0);
-	D3DSURFACE_DESC texdesc;
-	HRESULT hr = tex->GetLevelDesc(0, &texdesc);
-	if (FAILED(hr))
-		return false;
-
 	// Check if we need to create or resize the swap chain.
 	if (!mbFullScreen) {
+		const D3DDISPLAYMODE& dm = mpManager->GetDisplayMode();
+		const int dw = std::min<int>(rClient.right, dm.Width);
+		const int dh = std::min<int>(rClient.bottom, dm.Height);
+
 		if (mpManager->GetDeviceEx()) {
-			if (mSwapChainW != rClippedClient.right || mSwapChainH != rClippedClient.bottom) {
+			if (mSwapChainW != dw || mSwapChainH != dh) {
 				mpSwapChain = NULL;
 				mSwapChainW = 0;
 				mSwapChainH = 0;
 			}
 
-			if (!mpSwapChain || mSwapChainW != rClippedClient.right || mSwapChainH != rClippedClient.bottom) {
-				int scw = std::min<int>(rClippedClient.right, rtw);
-				int sch = std::min<int>(rClippedClient.bottom, rth);
+			if (!mpSwapChain || mSwapChainW != dw || mSwapChainH != dh) {
+				int scw = dw;
+				int sch = dh;
 
 				VDDEBUG("Resizing swap chain to %dx%d\n", scw, sch);
 
@@ -978,15 +969,15 @@ bool VDVideoDisplayMinidriverD3DFX::UpdateBackbuffer(const RECT& rClient0, Updat
 				mSwapChainH = sch;
 			}
 		} else {
-			if (mSwapChainW >= rClippedClient.right + 128 || mSwapChainH >= rClippedClient.bottom + 128) {
+			if (mSwapChainW >= dw + 128 || mSwapChainH >= dh + 128) {
 				mpSwapChain = NULL;
 				mSwapChainW = 0;
 				mSwapChainH = 0;
 			}
 
-			if ((!mpSwapChain || mSwapChainW < rClippedClient.right || mSwapChainH < rClippedClient.bottom)) {
-				int scw = std::min<int>((rClippedClient.right + 127) & ~127, rtw);
-				int sch = std::min<int>((rClippedClient.bottom + 127) & ~127, rth);
+			if ((!mpSwapChain || mSwapChainW < dw || mSwapChainH < dh)) {
+				int scw = std::min<int>((dw + 127) & ~127, dm.Width);
+				int sch = std::min<int>((dh + 127) & ~127, dm.Height);
 
 				VDDEBUG("Resizing swap chain to %dx%d\n", scw, sch);
 
@@ -998,6 +989,28 @@ bool VDVideoDisplayMinidriverD3DFX::UpdateBackbuffer(const RECT& rClient0, Updat
 			}
 		}
 	}
+
+	int rtw;
+	int rth;
+
+	if (mbFullScreen) {
+		rClient.right  = rtw = mpManager->GetMainRTWidth();
+		rClient.bottom = rth = mpManager->GetMainRTHeight();
+	} else {
+		rtw = mSwapChainW;
+		rth = mSwapChainH;
+	}
+
+	RECT rClippedClient={0,0,std::min<int>(rClient.right, rtw), std::min<int>(rClient.bottom, rth)};
+
+	vdsize32 vpsize(rClippedClient.right, rClippedClient.bottom);
+	CreateCustomTextures(false, &vpsize);
+
+	IDirect3DTexture9 *tex = mpUploadContext->GetD3DTexture(0);
+	D3DSURFACE_DESC texdesc;
+	HRESULT hr = tex->GetLevelDesc(0, &texdesc);
+	if (FAILED(hr))
+		return false;
 
 	// Do we need to switch bicubic modes?
 	FilterMode mode = mPreferredFilter;
@@ -1140,7 +1153,9 @@ bool VDVideoDisplayMinidriverD3DFX::UpdateBackbuffer(const RECT& rClient0, Updat
 			mbSwapChainImageValid = false;
 
 			D3D_AUTOBREAK(SetRenderTarget(0, pRTMain));
-			D3D_AUTOBREAK(BeginScene());
+
+			if (!mpManager->BeginScene())
+				goto d3d_failed;
 
 			D3DVIEWPORT9 vp = {
 				rDest.left,
@@ -1308,7 +1323,8 @@ bool VDVideoDisplayMinidriverD3DFX::UpdateBackbuffer(const RECT& rClient0, Updat
 				}
 			}
 
-			D3D_AUTOBREAK(EndScene());
+			if (!mpManager->EndScene())
+				goto d3d_failed;
 		}	
 	}
 

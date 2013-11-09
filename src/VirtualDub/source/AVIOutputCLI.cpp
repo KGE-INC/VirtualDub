@@ -1262,7 +1262,15 @@ void AVIOutputCLI::ExpandTokens(VDStringW& output, const wchar_t *templateLine0,
 			output.append_sprintf(L"%u", mFrameRate.getLo());
 		else if (!vdwcsicmp(token, L"outputname"))
 			output.append(VDFileSplitPath(mOutputFile.c_str()));
-		else if (!vdwcsicmp(token, L"outputfile"))
+		else if (!vdwcsicmp(token, L"outputbasename")) {
+			const wchar_t *outputName = VDFileSplitPath(mOutputFile.c_str());
+			const wchar_t *outputExt = VDFileSplitExt(outputName);
+
+			if (outputExt)
+				output.append(outputName, outputExt);
+			else
+				output.append(outputName);
+		} else if (!vdwcsicmp(token, L"outputfile"))
 			output.append(mOutputFile);
 		else if (!vdwcsicmp(token, L"outputdir"))
 			AppendDirectoryFromPath(output, mOutputFile.c_str());

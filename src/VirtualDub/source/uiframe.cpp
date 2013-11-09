@@ -23,8 +23,9 @@
 #include "resource.h"
 #include "gui.h"
 
-#if defined(_MSC_VER) && _MSC_VER < 1400
-	#pragma optimize("a", off)		// Needs to be off or compiler thinks 'this' can't be aliased through mhwnd
+// Requires Windows 8.1
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED 0x02E0
 #endif
 
 extern HINSTANCE g_hInst;
@@ -291,6 +292,16 @@ LRESULT CALLBACK VDUIFrame::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
 				VDCheckMenuItemByCommandW32((HMENU)wParam, ID_SYSTEM_ALWAYSONTOP, (GetWindowLong(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0);
 			}
 			break;
+
+		case WM_DPICHANGED:
+			{
+				const RECT& r = *(const RECT *)lParam;
+
+				SetWindowPos(hwnd, NULL, r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_NOZORDER | SWP_NOACTIVATE);
+				RedrawWindow(hwnd, NULL, NULL, RDW_INVALIDATE);
+			}
+			return 0;
+
 		case VDWM_ENGINE_EVENT:
 			if (p->mpEngine)
 				return p->mpEngine->OnEngineEvent(wParam, lParam);

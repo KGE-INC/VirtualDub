@@ -5,9 +5,9 @@
 	global	version_date
 	global	version_buildmachine
 
-version_num	dd	35390
-version_time	db	"Thu Dec 27 15:26:48 2012",0
-version_date	db	"December 27, 2012",0
+version_num	dd	35491
+version_time	db	"Sun Oct 27 16:00:02 2013",0
+version_date	db	"October 27, 2013",0
 version_buildmachine	db	"Althena",0
 
 	end

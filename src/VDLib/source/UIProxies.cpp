@@ -219,7 +219,16 @@ int VDUIProxyListView::GetSelectedIndex() const {
 }
 
 void VDUIProxyListView::SetSelectedIndex(int index) {
-	ListView_SetItemState(mhwnd, index, LVIS_SELECTED|LVIS_FOCUSED, LVIS_SELECTED|LVIS_FOCUSED);
+	int curIdx = GetSelectedIndex();
+
+	if (curIdx == index)
+		return;
+
+	if (curIdx >= 0)
+		ListView_SetItemState(mhwnd, index, 0, LVIS_SELECTED|LVIS_FOCUSED);
+
+	if (index >= 0)
+		ListView_SetItemState(mhwnd, index, LVIS_SELECTED|LVIS_FOCUSED, LVIS_SELECTED|LVIS_FOCUSED);
 }
 
 IVDUIListViewVirtualItem *VDUIProxyListView::GetSelectedItem() const {

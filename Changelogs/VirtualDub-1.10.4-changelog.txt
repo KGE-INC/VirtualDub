@@ -1,0 +1,30 @@
+Build 35491 (1.10.4, stable): [October 27, 2013]
+   [features added]
+   * ExtEnc: Added %(outputbasename) to insert output filename without
+     extension.
+   * ExtEnc: Editor UI now has a drop-down for tokens.
+   * Filters: Expanded color space support in resize filter.
+   * Preview: Return now also stops preview.
+
+   [bugs fixed]
+   * AVI: Added Copy button to AVI file information dialog.
+   * AVI: Fixed bitsPerPixel value for NV12 output.
+   * Capture: Improved error handling in screen capture module.
+   * Capture: Fixed sporadic errors in DXGI 1.2 screen capture mode related to
+     tracking pointer shape changes.
+   * Capture: Spill drives can be adjusted on Windows XP.
+   * Display: Fixed regression in D3D effects display mode.
+   * ExtEnc: Fixed weird selection behavior when duplicating item.
+   * Filters: Fixed script operation for Convert Format filter for the new
+     modes.
+   * Filters: Fixed crash when attempting to crop video in a format that isn't
+     AVI-compatible.
+   * Filters: Fixed cropping errors on alias format filter.
+   * Filters: Fixed issues with interpolate filter in nearest mode.
+   * GIF: Fixed shifted presentation timings when reading animated GIFs.
+   * Render: The processing priority setting now correctly adjusts the
+     priority of filter and compression worker threads too when multithreading
+     is enabled.
+   * TARGA: Fixed vertical inversion issues during read.
+   * UI: Add Windows 8.1 per-monitor DPI awareness support.
+
